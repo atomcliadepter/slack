@@ -4,6 +4,124 @@ import { slackClient } from '@/utils/slackClient';
 import { Validator, ToolSchemas } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import { 
+  analyzeAccountStatus,
+  assessProfileCompleteness,
+  analyzeActivityIndicators,
+  analyzeUserRole,
+  generateUserRecommendations
+} from '@/utils/aiAnalyticsStubs';
+
+// Additional stub functions for user analysis
+function inferCommunicationStyle(user: any): any {
+  return {
+    style: 'collaborative',
+    formality: 'moderate',
+    responsiveness: 'good'
+  };
+}
+
+function analyzeAvailabilityPattern(user: any): any {
+  return {
+    typical_hours: '9-17',
+    timezone_preference: user.tz || 'UTC',
+    availability_score: 0.8
+  };
+}
+
+function assessCollaborationLevel(user: any): any {
+  return {
+    collaboration_score: 0.7,
+    team_integration: 'high',
+    communication_frequency: 'regular'
+  };
+}
+
+function identifyExpertiseAreas(user: any): any {
+  return {
+    expertise_areas: [],
+    skill_indicators: [],
+    knowledge_domains: []
+  };
+}
+
+function assessTeamIntegration(user: any): any {
+  return {
+    integration_score: 0.8,
+    team_connections: 5,
+    collaboration_quality: 'high'
+  };
+}
+
+function calculateInfluenceScore(user: any): any {
+  return {
+    influence_score: 0.6,
+    influence_factors: ['activity', 'responses'],
+    network_position: 'contributor'
+  };
+}
+
+function suggestMissingFields(user: any): string[] {
+  const suggestions = [];
+  if (!user.profile?.title) suggestions.push('Add job title');
+  if (!user.profile?.phone) suggestions.push('Add phone number');
+  return suggestions;
+}
+
+function categorizeActivityRecency(timestamp: number): string {
+  const now = Date.now() / 1000;
+  const age = now - timestamp;
+  const days = age / (24 * 60 * 60);
+  
+  if (days < 1) return 'today';
+  if (days < 7) return 'this_week';
+  if (days < 30) return 'this_month';
+  return 'older';
+}
+
+function assessAccountPrivileges(user: any): any {
+  return {
+    privilege_level: user.is_admin ? 'admin' : 'standard',
+    permissions: user.is_admin ? ['admin'] : ['standard'],
+    access_scope: 'workspace'
+  };
+}
+
+function estimateWorkingHours(timezone: string): string {
+  return '9:00 AM - 5:00 PM';
+}
+
+function assessGlobalCollaboration(timezone: string): any {
+  return {
+    collaboration_potential: 'high',
+    timezone_overlap: 'good',
+    global_reach: 'moderate'
+  };
+}
+
+function identifyCollaborationIndicators(user: any): any {
+  return {
+    collaboration_indicators: ['active_participant', 'responsive'],
+    team_player_score: 0.8,
+    mentorship_potential: 'moderate'
+  };
+}
+
+function identifyIntegrationFactors(user: any): any {
+  return {
+    integration_factors: ['communication', 'availability'],
+    integration_barriers: [],
+    improvement_areas: []
+  };
+}
+
+function identifyInfluenceSources(user: any): any {
+  return {
+    influence_sources: ['expertise', 'activity'],
+    influence_channels: ['direct_messages', 'channels'],
+    influence_reach: 'moderate'
+  };
+}
 
 export const slackUsersInfoTool: MCPTool = {
   name: 'slack_users_info',

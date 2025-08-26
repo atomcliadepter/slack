@@ -218,6 +218,101 @@ export class Validator {
   }
 
   /**
+   * Validate Slack attachments
+   */
+  static validateAttachments(attachments: any[]): boolean {
+    if (!Array.isArray(attachments)) return false;
+    
+    return attachments.every(attachment => {
+      if (typeof attachment !== 'object' || attachment === null) return false;
+      
+      // Basic attachment validation
+      if (attachment.fallback && typeof attachment.fallback !== 'string') return false;
+      if (attachment.color && typeof attachment.color !== 'string') return false;
+      if (attachment.title && typeof attachment.title !== 'string') return false;
+      if (attachment.text && typeof attachment.text !== 'string') return false;
+      
+      return true;
+    });
+  }
+
+  /**
+   * Validate complete message payload
+   */
+  static validateMessagePayload(payload: any): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    if (!payload || typeof payload !== 'object') {
+      errors.push('Payload must be an object');
+      return { isValid: false, errors };
+    }
+    
+    // Required fields
+    if (!payload.channel) {
+      errors.push('channel is required');
+    }
+    
+    if (!payload.text && !payload.blocks && !payload.attachments) {
+      errors.push('Either text, blocks, or attachments must be provided');
+    }
+    
+    // Validate channel format
+    if (payload.channel && !this.validateChannelName(payload.channel) && !this.validateChannelId(payload.channel)) {
+      errors.push('Invalid channel format');
+    }
+    
+    // Validate text length
+    if (payload.text && !this.validateMessageText(payload.text)) {
+      errors.push('Message text is invalid or too long');
+    }
+    
+    // Validate attachments if present
+    if (payload.attachments && !this.validateAttachments(payload.attachments)) {
+      errors.push('Invalid attachments format');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+
+  /**
+   * Validate message text
+   */
+  static validateMessageText(text: string): boolean {
+    if (typeof text !== 'string') return false;
+    if (text.length === 0) return false;
+    if (text.length > 4000) return false; // Slack limit
+    return true;
+  }
+
+  /**
+   * Validate channel name format
+   */
+  static validateChannelName(name: string): boolean {
+    if (typeof name !== 'string') return false;
+    if (name.length === 0) return false;
+    
+    // Channel names can start with # or not
+    const cleanName = name.startsWith('#') ? name.slice(1) : name;
+    
+    // Must be lowercase, can contain letters, numbers, hyphens, underscores
+    const channelNameRegex = /^[a-z0-9_-]+$/;
+    return channelNameRegex.test(cleanName) && cleanName.length <= 80;
+  }
+
+  /**
+   * Validate channel ID format
+   */
+  static validateChannelId(id: string): boolean {
+    if (typeof id !== 'string') return false;
+    // Slack channel IDs start with C and are followed by alphanumeric characters
+    const channelIdRegex = /^C[A-Z0-9]{8,}$/;
+    return channelIdRegex.test(id);
+  }
+
+  /**
    * Get validation errors without throwing
    */
   static getErrors<T>(schema: z.ZodSchema<T>, data: any): string[] {

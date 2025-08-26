@@ -1,0 +1,180 @@
+{
+  "channels": [
+    {
+      "id": "C1234567890",
+      "name": "general",
+      "is_channel": true,
+      "is_group": false,
+      "is_im": false,
+      "is_mpim": false,
+      "is_private": false,
+      "created": 1609459200,
+      "is_archived": false,
+      "is_general": true,
+      "unlinked": 0,
+      "name_normalized": "general",
+      "is_shared": false,
+      "is_ext_shared": false,
+      "is_org_shared": false,
+      "pending_shared": [],
+      "pending_connected_team_ids": [],
+      "is_pending_ext_shared": false,
+      "is_member": true,
+      "is_open": true,
+      "topic": {
+        "value": "Company-wide announcements and work-based matters",
+        "creator": "U1234567890",
+        "last_set": 1609459200
+      },
+      "purpose": {
+        "value": "This channel is for team-wide communication and announcements. All team members are in this channel.",
+        "creator": "U1234567890",
+        "last_set": 1609459200
+      },
+      "num_members": 25
+    },
+    {
+      "id": "C2345678901",
+      "name": "development",
+      "is_channel": true,
+      "is_group": false,
+      "is_im": false,
+      "is_mpim": false,
+      "is_private": false,
+      "created": 1609545600,
+      "is_archived": false,
+      "is_general": false,
+      "unlinked": 0,
+      "name_normalized": "development",
+      "is_shared": false,
+      "is_ext_shared": false,
+      "is_org_shared": false,
+      "pending_shared": [],
+      "pending_connected_team_ids": [],
+      "is_pending_ext_shared": false,
+      "is_member": true,
+      "is_open": true,
+      "topic": {
+        "value": "Development discussions and code reviews",
+        "creator": "U2345678901",
+        "last_set": 1609545600
+      },
+      "purpose": {
+        "value": "Channel for development team discussions, code reviews, and technical topics.",
+        "creator": "U2345678901",
+        "last_set": 1609545600
+      },
+      "num_members": 12
+    },
+    {
+      "id": "C3456789012",
+      "name": "testing",
+      "is_channel": true,
+      "is_group": false,
+      "is_im": false,
+      "is_mpim": false,
+      "is_private": false,
+      "created": 1609632000,
+      "is_archived": false,
+      "is_general": false,
+      "unlinked": 0,
+      "name_normalized": "testing",
+      "is_shared": false,
+      "is_ext_shared": false,
+      "is_org_shared": false,
+      "pending_shared": [],
+      "pending_connected_team_ids": [],
+      "is_pending_ext_shared": false,
+      "is_member": true,
+      "is_open": true,
+      "topic": {
+        "value": "QA and testing discussions",
+        "creator": "U3456789012",
+        "last_set": 1609632000
+      },
+      "purpose": {
+        "value": "Channel for QA team discussions, test results, and quality assurance topics.",
+        "creator": "U3456789012",
+        "last_set": 1609632000
+      },
+      "num_members": 8
+    },
+    {
+      "id": "G4567890123",
+      "name": "private-project",
+      "is_channel": false,
+      "is_group": true,
+      "is_im": false,
+      "is_mpim": false,
+      "is_private": true,
+      "created": 1609718400,
+      "is_archived": false,
+      "is_general": false,
+      "unlinked": 0,
+      "name_normalized": "private-project",
+      "is_shared": false,
+      "is_ext_shared": false,
+      "is_org_shared": false,
+      "pending_shared": [],
+      "pending_connected_team_ids": [],
+      "is_pending_ext_shared": false,
+      "is_member": true,
+      "is_open": true,
+      "topic": {
+        "value": "Confidential project discussions",
+        "creator": "U1234567890",
+        "last_set": 1609718400
+      },
+      "purpose": {
+        "value": "Private channel for confidential project discussions and planning.",
+        "creator": "U1234567890",
+        "last_set": 1609718400
+      },
+      "num_members": 5
+    },
+    {
+      "id": "C5678901234",
+      "name": "archived-channel",
+      "is_channel": true,
+      "is_group": false,
+      "is_im": false,
+      "is_mpim": false,
+      "is_private": false,
+      "created": 1609804800,
+      "is_archived": true,
+      "is_general": false,
+      "unlinked": 0,
+      "name_normalized": "archived-channel",
+      "is_shared": false,
+      "is_ext_shared": false,
+      "is_org_shared": false,
+      "pending_shared": [],
+      "pending_connected_team_ids": [],
+      "is_pending_ext_shared": false,
+      "is_member": false,
+      "is_open": false,
+      "topic": {
+        "value": "This channel has been archived",
+        "creator": "U1234567890",
+        "last_set": 1609804800
+      },
+      "purpose": {
+        "value": "Channel that was archived for testing purposes.",
+        "creator": "U1234567890",
+        "last_set": 1609804800
+      },
+      "num_members": 0
+    }
+  ],
+  "response_metadata": {
+    "next_cursor": "",
+    "scopes": [
+      "channels:read",
+      "groups:read"
+    ],
+    "acceptedScopes": [
+      "channels:read",
+      "groups:read"
+    ]
+  }
+}
