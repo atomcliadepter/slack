@@ -1,37 +1,3 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="13" failures="1" errors="0" time="1.946">
-  <testsuite name="slackJoinChannelTool" errors="0" failures="1" skipped="0" timestamp="2025-08-26T12:34:53" time="1.859" tests="13">
-    <testcase classname="slackJoinChannelTool › Input Validation" name="should validate required channel parameter" time="0.019">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Input Validation" name="should validate channel format" time="0.011">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Input Validation" name="should accept valid channel ID format" time="0.005">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Channel Resolution" name="should resolve channel name to ID" time="0.009">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Channel Resolution" name="should handle channel not found during resolution" time="0.012">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Pre-join Analysis" name="should detect already member status" time="0.006">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Pre-join Analysis" name="should detect archived channel" time="0.007">
-      <failure>Error: expect(received).toBe(expected) // Object.is equality
-
-Expected: false
-Received: true
-    at Object.&lt;anonymous&gt; (/home/rama/Desktop/development/mcp_server/slack_mcp/tests/unit/tools/channels/slackJoinChannel.test.ts:186:30)
-    at processTicksAndRejections (node:internal/process/task_queues:95:5)</failure>
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Join Operation" name="should successfully join a public channel" time="0.004">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Join Operation" name="should handle already_in_channel warning" time="0.004">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Error Handling" name="should handle private channel access error" time="0.01">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Error Handling" name="should handle rate limiting with retry" time="0.108">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Tool Metadata" name="should have correct tool metadata" time="0.002">
-    </testcase>
-    <testcase classname="slackJoinChannelTool › Tool Metadata" name="should include execution time in response" time="0.003">
-    </testcase>
-  </testsuite>
+<testsuites name="jest tests" tests="0" failures="0" errors="0" time="1.732">
 </testsuites>

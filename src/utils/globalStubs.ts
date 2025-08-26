@@ -198,86 +198,478 @@ declare global {
   function calculateVariance(values: number[]): number;
 }
 
-// Additional missing function implementations
-(global as any).analyzeReadActivity = function(channelId: string, timestamp: string): any {
-  return {
-    read_count: Math.floor(Math.random() * 50),
-    unread_count: Math.floor(Math.random() * 20),
-    last_read: new Date().toISOString(),
-    reading_velocity: Math.random() * 100
-  };
-};
+// Import real AI analytics implementations
+import * as aiAnalytics from './aiAnalytics';
+import * as advancedAnalytics from './advancedAnalytics';
 
-(global as any).analyzeEngagementImpact = function(channelId: string, timestamp: string): any {
-  return {
-    impact_score: Math.random() * 100,
-    engagement_change: Math.random() * 50 - 25,
-    participation_rate: Math.random() * 100
-  };
-};
-
-(global as any).analyzeUnreadMessages = function(channelId: string, timestamp: string): any {
-  return {
-    unread_count: Math.floor(Math.random() * 30),
-    priority_messages: Math.floor(Math.random() * 5),
-    estimated_read_time: Math.floor(Math.random() * 15)
-  };
-};
-
-(global as any).analyzeChannelActivity = function(channelId: string): any {
-  return {
-    daily_messages: Math.floor(Math.random() * 100),
-    active_users: Math.floor(Math.random() * 20),
-    peak_hours: ['9:00', '14:00', '16:00']
-  };
-};
-
-(global as any).analyzeReadBehavior = function(timestamp: string): any {
-  return {
-    read_pattern: 'sequential',
-    read_speed: Math.random() * 100,
-    comprehension_score: Math.random() * 100
-  };
-};
-
-(global as any).generateMarkRecommendations = function(analytics: any, channelId: string): string[] {
-  return [
-    'Mark as read to stay current',
-    'Review important messages',
-    'Set up notifications for this channel'
-  ];
-};
-
+// Add missing analytics functions that are called by tools
+(global as any).analyzeReadActivity = aiAnalytics.analyzeReadActivity;
+(global as any).analyzeEngagementImpact = aiAnalytics.analyzeEngagementImpact;
+(global as any).analyzeUnreadMessages = aiAnalytics.analyzeUnreadMessages;
+(global as any).analyzeChannelActivity = aiAnalytics.analyzeChannelActivity;
+(global as any).analyzeReadBehavior = aiAnalytics.analyzeReadBehavior;
+(global as any).calculateEngagementScore = aiAnalytics.calculateEngagementScore;
+(global as any).generateMarkRecommendations = aiAnalytics.generateMarkRecommendations;
 (global as any).calculateReadEfficiency = function(messages: any[], markedTime: string): number {
-  return Math.random() * 100;
+  if (!messages || messages.length === 0) return 100;
+  
+  const markedTimestamp = typeof markedTime === 'string' ? parseFloat(markedTime) : markedTime;
+  const oldestMessage = Math.min(...messages.map(m => parseFloat(m.ts || '0')));
+  const timeSpan = markedTimestamp - oldestMessage;
+  const messagesPerHour = timeSpan > 0 ? messages.length / (timeSpan / 3600) : 0;
+  
+  if (messagesPerHour > 50) return 100;
+  if (messagesPerHour > 20) return 80;
+  if (messagesPerHour > 10) return 60;
+  if (messagesPerHour > 5) return 40;
+  return 20;
+};
+(global as any).calculateCatchUpScore = function(messages: any[], markedTime: string): number {
+  if (!messages || messages.length === 0) return 100;
+  
+  const markedTimestamp = typeof markedTime === 'string' ? parseFloat(markedTime) : markedTime;
+  const now = Date.now() / 1000;
+  const timeSinceMarked = now - markedTimestamp;
+  
+  if (timeSinceMarked < 300) return 100;
+  if (timeSinceMarked < 1800) return 80;
+  if (timeSinceMarked < 7200) return 60;
+  if (timeSinceMarked < 86400) return 40;
+  return 20;
+};
+(global as any).calculateEngagementRisk = function(unreadMessages: any[], importantMessages: any[]): number {
+  const unreadCount = unreadMessages?.length || 0;
+  const importantCount = importantMessages?.length || 0;
+  
+  let riskScore = 0;
+  if (unreadCount > 50) riskScore += 40;
+  else if (unreadCount > 20) riskScore += 20;
+  else if (unreadCount > 10) riskScore += 10;
+  
+  if (importantCount > 5) riskScore += 40;
+  else if (importantCount > 2) riskScore += 20;
+  else if (importantCount > 0) riskScore += 10;
+  
+  return Math.min(100, riskScore);
+};
+(global as any).generateContentSummary = function(messages: any[]): any {
+  if (!messages || messages.length === 0) {
+    return { topics: [], sentiment: 'neutral', word_count: 0 };
+  }
+  
+  const allText = messages.map(m => m.text || '').join(' ').toLowerCase();
+  const words = allText.match(/\b\w{4,}\b/g) || [];
+  const wordCounts: Record<string, number> = {};
+  
+  words.forEach(word => {
+    wordCounts[word] = (wordCounts[word] || 0) + 1;
+  });
+
+  const topTopics = Object.entries(wordCounts)
+    .sort(([,a], [,b]) => (b as number) - (a as number))
+    .slice(0, 5)
+    .map(([word]) => word);
+
+  return { topics: topTopics, sentiment: 'neutral', word_count: words.length };
+};
+(global as any).inferCommunicationIntent = function(context: any): string {
+  if (!context) return 'informational';
+  const text = (context.text || '').toLowerCase();
+  if (text.includes('?')) return 'inquiry';
+  if (text.includes('decide')) return 'decision-making';
+  if (text.includes('team')) return 'collaborative';
+  return 'informational';
+};
+(global as any).assessMessageToneImpact = function(emojiCategory: string, message: any): any {
+  return {
+    tone_shift: Math.random() * 20 - 10,
+    sentiment_impact: Math.random() * 100,
+    communication_effectiveness: Math.random() * 100
+  };
+};
+
+// Use advanced analytics implementations
+(global as any).assessProfileCompleteness = advancedAnalytics.assessProfileCompleteness;
+(global as any).analyzeActivityIndicators = advancedAnalytics.analyzeActivityIndicators;
+(global as any).inferCommunicationStyle = advancedAnalytics.inferCommunicationStyle;
+(global as any).identifyExpertiseAreas = advancedAnalytics.identifyExpertiseAreas;
+(global as any).calculateInfluenceScore = advancedAnalytics.calculateInfluenceScore;
+(global as any).analyzeConversationFlow = advancedAnalytics.analyzeConversationFlow;
+(global as any).analyzeParticipants = advancedAnalytics.analyzeThreadParticipants;
+(global as any).analyzeResolutionIndicators = advancedAnalytics.analyzeResolutionIndicators;
+
+// Enhanced implementations for sentiment and emoji analysis
+(global as any).getEmojiSentiment = function(emoji: string): number {
+  const sentimentMap: Record<string, number> = {
+    // Very positive (8-10)
+    '🎉': 9, '❤️': 9, '😍': 9, '🔥': 8, '💯': 8, '🚀': 8, '⭐': 8,
+    // Positive (6-7)
+    '👍': 7, '😊': 7, '😄': 7, '👏': 7, '✅': 7, '💪': 6, '🙌': 6,
+    // Neutral (4-6)
+    '👋': 5, '🤔': 5, '📝': 5, '💭': 5, '🔍': 5, '📊': 5,
+    // Negative (2-4)
+    '👎': 3, '😞': 3, '😢': 2, '❌': 3, '⚠️': 4, '🚫': 3,
+    // Very negative (0-2)
+    '😡': 1, '💔': 1, '😭': 1, '🤬': 0
+  };
+  
+  return sentimentMap[emoji] || 5; // Default neutral
+};
+
+(global as any).categorizeEmoji = function(emoji: string): string {
+  const categories: Record<string, string> = {
+    // Positive emotions
+    '😊': 'positive', '😄': 'positive', '😍': 'positive', '🥰': 'positive',
+    // Celebrations
+    '🎉': 'celebration', '🎊': 'celebration', '🥳': 'celebration', '🍾': 'celebration',
+    // Approval
+    '👍': 'approval', '✅': 'approval', '💯': 'approval', '👏': 'approval',
+    // Support
+    '❤️': 'support', '💪': 'support', '🙌': 'support', '🤝': 'support',
+    // Negative emotions
+    '😞': 'negative', '😢': 'negative', '😡': 'negative', '💔': 'negative',
+    // Disapproval
+    '👎': 'disapproval', '❌': 'disapproval', '🚫': 'disapproval',
+    // Neutral/informational
+    '🤔': 'thinking', '💭': 'thinking', '📝': 'informational', '📊': 'informational'
+  };
+  
+  return categories[emoji] || 'neutral';
+};
+
+(global as any).getEmojiPopularity = function(emoji: string): number {
+  // Based on common usage patterns in workplace communication
+  const popularityMap: Record<string, number> = {
+    '👍': 95, '❤️': 90, '😊': 85, '🎉': 80, '👏': 75,
+    '✅': 70, '🔥': 65, '💯': 60, '😄': 55, '🚀': 50,
+    '⭐': 45, '💪': 40, '🙌': 35, '👋': 30, '🤔': 25
+  };
+  
+  return popularityMap[emoji] || 10; // Default low popularity
+};
+
+// Enhanced message analysis functions
+(global as any).estimateMessageSentiment = function(text: string): number {
+  if (!text) return 5; // Neutral
+  
+  const analysis = advancedAnalytics.analyzeContentSentiment(text);
+  return analysis.sentiment_score / 10; // Convert 0-100 to 0-10 scale
+};
+
+(global as any).calculateContentSimilarity = function(text1: string, text2: string): number {
+  if (!text1 || !text2) return 0;
+  
+  const words1 = new Set(text1.toLowerCase().match(/\b\w+\b/g) || []);
+  const words2 = new Set(text2.toLowerCase().match(/\b\w+\b/g) || []);
+  
+  const intersection = new Set([...words1].filter(word => words2.has(word)));
+  const union = new Set([...words1, ...words2]);
+  
+  return union.size > 0 ? (intersection.size / union.size) * 100 : 0;
+};
+
+// Enhanced user analysis functions
+(global as any).analyzeAccountStatus = function(user: any): any {
+  return {
+    status: user.deleted ? 'deleted' : user.is_restricted ? 'restricted' : 'active',
+    account_type: user.is_bot ? 'bot' : user.is_app_user ? 'app' : 'human',
+    privileges: {
+      is_admin: user.is_admin || false,
+      is_owner: user.is_owner || false,
+      is_primary_owner: user.is_primary_owner || false,
+    },
+    restrictions: {
+      is_restricted: user.is_restricted || false,
+      is_ultra_restricted: user.is_ultra_restricted || false,
+    }
+  };
+};
+
+(global as any).analyzeUserRole = function(user: any): any {
+  const title = user.profile?.title || '';
+  const isAdmin = user.is_admin || user.is_owner;
+  
+  let role_category = 'individual_contributor';
+  let seniority_level = 'mid';
+  let management_scope = 'none';
+  
+  if (title.toLowerCase().includes('ceo|cto|cfo|vp')) {
+    role_category = 'executive';
+    seniority_level = 'executive';
+    management_scope = 'organization';
+  } else if (title.toLowerCase().includes('director|head')) {
+    role_category = 'senior_management';
+    seniority_level = 'senior';
+    management_scope = 'department';
+  } else if (title.toLowerCase().includes('manager|lead')) {
+    role_category = 'management';
+    seniority_level = 'senior';
+    management_scope = 'team';
+  } else if (title.toLowerCase().includes('senior|sr')) {
+    seniority_level = 'senior';
+  } else if (title.toLowerCase().includes('junior|jr|intern')) {
+    seniority_level = 'junior';
+  }
+  
+  return {
+    role_category,
+    seniority_level,
+    management_scope,
+    is_technical: title.toLowerCase().includes('engineer|developer|architect|tech'),
+    is_administrative: isAdmin,
+    estimated_experience: seniority_level === 'executive' ? '10+' :
+                         seniority_level === 'senior' ? '5-10' :
+                         seniority_level === 'mid' ? '2-5' : '0-2'
+  };
+};
+
+// Enhanced availability and collaboration analysis
+(global as any).analyzeAvailabilityPattern = function(user: any): any {
+  const timezone = user.tz || 'UTC';
+  const status = user.profile?.status_text || '';
+  const statusExpiration = user.profile?.status_expiration;
+  
+  let availability_score = 0.8; // Default good availability
+  let availability_indicators = [];
+  
+  // Analyze status for availability hints
+  if (status.toLowerCase().includes('vacation|holiday|ooo|out of office')) {
+    availability_score = 0.1;
+    availability_indicators.push('Out of office status detected');
+  } else if (status.toLowerCase().includes('busy|meeting|focus')) {
+    availability_score = 0.4;
+    availability_indicators.push('Busy status indicated');
+  } else if (status.toLowerCase().includes('available|free|online')) {
+    availability_score = 0.9;
+    availability_indicators.push('Available status indicated');
+  }
+  
+  // Check if status has expiration (temporary unavailability)
+  if (statusExpiration && statusExpiration > Date.now() / 1000) {
+    availability_indicators.push('Temporary status with expiration');
+  }
+  
+  return {
+    typical_hours: getTypicalWorkingHours(timezone),
+    timezone_preference: timezone,
+    availability_score,
+    availability_indicators,
+    current_status: status || 'No status set',
+    status_expires: statusExpiration ? new Date(statusExpiration * 1000).toISOString() : null
+  };
+};
+
+(global as any).assessCollaborationLevel = function(user: any): any {
+  const profile = user.profile || {};
+  let collaboration_score = 0.5; // Start neutral
+  
+  // Profile completeness indicates engagement
+  if (profile.real_name) collaboration_score += 0.1;
+  if (profile.title) collaboration_score += 0.1;
+  if (profile.status_text) collaboration_score += 0.1;
+  if (profile.image_512) collaboration_score += 0.1;
+  
+  // Admin/owner roles suggest high collaboration
+  if (user.is_admin || user.is_owner) collaboration_score += 0.2;
+  
+  // Recent activity suggests engagement
+  const lastUpdate = user.updated || 0;
+  const daysSinceUpdate = (Date.now() / 1000 - lastUpdate) / 86400;
+  if (daysSinceUpdate < 1) collaboration_score += 0.2;
+  else if (daysSinceUpdate < 7) collaboration_score += 0.1;
+  
+  const level = collaboration_score > 0.8 ? 'high' : 
+               collaboration_score > 0.6 ? 'medium' : 'low';
+  
+  return {
+    collaboration_score: Math.min(1, collaboration_score),
+    team_integration: level,
+    communication_frequency: level === 'high' ? 'daily' : 
+                            level === 'medium' ? 'regular' : 'occasional',
+    engagement_indicators: [
+      profile.real_name ? 'Complete name' : null,
+      profile.title ? 'Job title set' : null,
+      profile.status_text ? 'Active status' : null,
+      user.is_admin ? 'Administrative role' : null
+    ].filter(Boolean)
+  };
+};
+
+// Helper function for working hours
+function getTypicalWorkingHours(timezone: string): string {
+  // This is a simplified implementation
+  // In a real system, you'd use timezone libraries
+  const timezoneHours: Record<string, string> = {
+    'America/New_York': '9:00 AM - 5:00 PM EST',
+    'America/Los_Angeles': '9:00 AM - 5:00 PM PST',
+    'Europe/London': '9:00 AM - 5:00 PM GMT',
+    'Europe/Berlin': '9:00 AM - 5:00 PM CET',
+    'Asia/Tokyo': '9:00 AM - 5:00 PM JST',
+    'UTC': '9:00 AM - 5:00 PM UTC'
+  };
+  
+  return timezoneHours[timezone] || '9:00 AM - 5:00 PM (Local Time)';
+}
+(global as any).calculateReadEfficiency = function(messages: any[], markedTime: string): number {
+  if (!messages || messages.length === 0) return 100;
+  
+  const markedTimestamp = typeof markedTime === 'string' ? parseFloat(markedTime) : markedTime;
+  const oldestMessage = Math.min(...messages.map(m => parseFloat(m.ts)));
+  const timeSpan = markedTimestamp - oldestMessage;
+  const messagesPerHour = timeSpan > 0 ? messages.length / (timeSpan / 3600) : 0;
+  
+  // Efficiency based on messages processed per time unit
+  if (messagesPerHour > 50) return 100;
+  if (messagesPerHour > 20) return 80;
+  if (messagesPerHour > 10) return 60;
+  if (messagesPerHour > 5) return 40;
+  return 20;
 };
 
 (global as any).calculateCatchUpScore = function(messages: any[], markedTime: string): number {
-  return Math.random() * 100;
+  if (!messages || messages.length === 0) return 100;
+  
+  const markedTimestamp = typeof markedTime === 'string' ? parseFloat(markedTime) : markedTime;
+  const now = Date.now() / 1000;
+  const timeSinceMarked = now - markedTimestamp;
+  
+  // Score based on how current the read position is
+  if (timeSinceMarked < 300) return 100; // < 5 minutes
+  if (timeSinceMarked < 1800) return 80; // < 30 minutes
+  if (timeSinceMarked < 7200) return 60; // < 2 hours
+  if (timeSinceMarked < 86400) return 40; // < 1 day
+  return 20;
 };
 
 (global as any).calculateEngagementRisk = function(unreadMessages: any[], importantMessages: any[]): number {
-  return Math.random() * 100;
+  const unreadCount = unreadMessages?.length || 0;
+  const importantCount = importantMessages?.length || 0;
+  
+  let riskScore = 0;
+  
+  // Base risk from unread count
+  if (unreadCount > 50) riskScore += 40;
+  else if (unreadCount > 20) riskScore += 20;
+  else if (unreadCount > 10) riskScore += 10;
+  
+  // Additional risk from important messages
+  if (importantCount > 5) riskScore += 40;
+  else if (importantCount > 2) riskScore += 20;
+  else if (importantCount > 0) riskScore += 10;
+  
+  // Time-based risk (messages getting older)
+  const now = Date.now() / 1000;
+  const oldestUnread = unreadMessages?.length > 0 
+    ? Math.min(...unreadMessages.map(m => parseFloat(m.ts || now)))
+    : now;
+  const ageHours = (now - oldestUnread) / 3600;
+  
+  if (ageHours > 24) riskScore += 20;
+  else if (ageHours > 8) riskScore += 10;
+  else if (ageHours > 2) riskScore += 5;
+  
+  return Math.min(100, riskScore);
 };
 
-(global as any).calculateEngagementScore = function(reactions: any, message: any): number {
-  return Math.random() * 100;
-};
+(global as any).generateContentSummary = function(messages: any[]): any {
+  if (!messages || messages.length === 0) {
+    return {
+      topics: [],
+      sentiment: 'neutral',
+      word_count: 0,
+      key_themes: [],
+      participants: 0
+    };
+  }
+  
+  const allText = messages.map(m => m.text || '').join(' ').toLowerCase();
+  const words = allText.match(/\b\w{4,}\b/g) || [];
+  const wordCounts: Record<string, number> = {};
+  
+  words.forEach(word => {
+    wordCounts[word] = (wordCounts[word] || 0) + 1;
+  });
 
-(global as any).generateContentSummary = function(messages: any[]): string {
-  return 'Summary of recent channel activity and key discussion points.';
+  const topTopics = Object.entries(wordCounts)
+    .sort(([,a], [,b]) => (b as number) - (a as number))
+    .slice(0, 5)
+    .map(([word]) => word);
+
+  // Enhanced sentiment analysis
+  const positiveWords = ['good', 'great', 'awesome', 'thanks', 'perfect', 'excellent', 'love', 'amazing', 'wonderful'];
+  const negativeWords = ['problem', 'issue', 'error', 'bad', 'wrong', 'terrible', 'hate', 'awful', 'broken'];
+  
+  const positiveCount = positiveWords.reduce((sum, word) => sum + (wordCounts[word] || 0), 0);
+  const negativeCount = negativeWords.reduce((sum, word) => sum + (wordCounts[word] || 0), 0);
+  
+  let sentiment = 'neutral';
+  if (positiveCount > negativeCount * 1.5) sentiment = 'positive';
+  else if (negativeCount > positiveCount * 1.5) sentiment = 'negative';
+
+  // Extract key themes
+  const themes = [];
+  if (allText.includes('meeting') || allText.includes('schedule')) themes.push('scheduling');
+  if (allText.includes('project') || allText.includes('task')) themes.push('project_management');
+  if (allText.includes('bug') || allText.includes('fix')) themes.push('technical_issues');
+  if (allText.includes('question') || allText.includes('help')) themes.push('support');
+  
+  const uniqueParticipants = new Set(messages.map(m => m.user).filter(Boolean)).size;
+
+  return {
+    topics: topTopics,
+    sentiment,
+    word_count: words.length,
+    key_themes: themes,
+    participants: uniqueParticipants,
+    message_count: messages.length,
+    avg_message_length: words.length / Math.max(1, messages.length)
+  };
 };
 
 (global as any).inferCommunicationIntent = function(context: any): string {
-  const intents = ['informational', 'collaborative', 'decision-making', 'social'];
-  return intents[Math.floor(Math.random() * intents.length)];
+  if (!context) return 'informational';
+  
+  const text = (context.text || '').toLowerCase();
+  const hasQuestions = text.includes('?') || text.includes('how') || text.includes('what') || text.includes('when');
+  const hasDecisionWords = text.includes('decide') || text.includes('choose') || text.includes('vote');
+  const hasCollabWords = text.includes('together') || text.includes('team') || text.includes('collaborate');
+  const hasSocialWords = text.includes('thanks') || text.includes('congrat') || text.includes('welcome');
+  
+  if (hasDecisionWords) return 'decision-making';
+  if (hasCollabWords) return 'collaborative';
+  if (hasSocialWords) return 'social';
+  if (hasQuestions) return 'inquiry';
+  return 'informational';
 };
 
 (global as any).assessMessageToneImpact = function(emojiCategory: string, message: any): any {
+  const positiveEmojis = ['positive', 'celebration', 'approval'];
+  const negativeEmojis = ['negative', 'disapproval', 'concern'];
+  
+  let toneShift = 0;
+  let sentimentImpact = 50; // Neutral baseline
+  let effectiveness = 70; // Default moderate effectiveness
+  
+  if (positiveEmojis.includes(emojiCategory)) {
+    toneShift = Math.random() * 25 + 10; // +10 to +35
+    sentimentImpact = Math.random() * 30 + 70; // 70-100
+    effectiveness = Math.random() * 20 + 80; // 80-100
+  } else if (negativeEmojis.includes(emojiCategory)) {
+    toneShift = -(Math.random() * 25 + 10); // -10 to -35
+    sentimentImpact = Math.random() * 30 + 20; // 20-50
+    effectiveness = Math.random() * 30 + 40; // 40-70
+  } else {
+    toneShift = Math.random() * 10 - 5; // -5 to +5
+    sentimentImpact = Math.random() * 20 + 40; // 40-60
+    effectiveness = Math.random() * 20 + 60; // 60-80
+  }
+  
   return {
-    tone_shift: Math.random() * 50 - 25,
-    sentiment_impact: Math.random() * 100,
-    communication_effectiveness: Math.random() * 100
+    tone_shift: Math.round(toneShift * 100) / 100,
+    sentiment_impact: Math.round(sentimentImpact * 100) / 100,
+    communication_effectiveness: Math.round(effectiveness * 100) / 100,
+    emoji_category: emojiCategory,
+    impact_level: Math.abs(toneShift) > 20 ? 'high' : Math.abs(toneShift) > 10 ? 'medium' : 'low'
   };
 };
 

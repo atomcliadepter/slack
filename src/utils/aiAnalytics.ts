@@ -1,531 +1,683 @@
+/**
+ * AI Analytics Module for Enhanced MCP Slack SDK
+ * Provides intelligent analysis and insights for Slack data
+ */
 
-// Simple console logger for AI analytics
-const logger = {
-  createLogger: (name: string) => ({
-    info: (message: string, data?: any) => {
-      console.log(`[${name}] INFO: ${message}`, data ? JSON.stringify(data) : '');
-    }
-  })
-};
+import { slackClient } from './slackClient';
+import { logger } from './logger';
 
-export interface SentimentAnalysis {
-  score: number; // -1 to 1
-  magnitude: number; // 0 to 1
-  label: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
-  confidence: number;
-  emotions?: {
-    joy: number;
-    anger: number;
-    fear: number;
-    sadness: number;
-    surprise: number;
+export interface ReadActivityAnalysis {
+  read_count: number;
+  unread_count: number;
+  last_read: string;
+  reading_velocity: number;
+  efficiency_score: number;
+  catch_up_score: number;
+  engagement_risk: 'low' | 'medium' | 'high';
+}
+
+export interface EngagementImpactAnalysis {
+  impact_score: number;
+  engagement_change: number;
+  participation_rate: number;
+  missed_interactions: number;
+  social_signals: number;
+  influence_metrics: {
+    reach: number;
+    resonance: number;
+    relevance: number;
   };
 }
 
-export interface EngagementPrediction {
-  score: number; // 0 to 1
-  factors: string[];
-  recommendation: string;
-  optimalTiming?: {
-    hour: number;
-    dayOfWeek: number;
+export interface UnreadMessagesAnalysis {
+  unread_count: number;
+  priority_messages: number;
+  estimated_read_time: number;
+  content_categories: Record<string, number>;
+  urgency_distribution: Record<string, number>;
+  key_participants: string[];
+}
+
+export interface ChannelActivityAnalysis {
+  daily_messages: number;
+  active_users: number;
+  peak_hours: string[];
+  activity_trend: 'increasing' | 'decreasing' | 'stable';
+  engagement_patterns: {
+    high_engagement_periods: string[];
+    low_engagement_periods: string[];
+    average_response_time: number;
   };
 }
 
-export interface ContentAnalysis {
-  topics: string[];
-  readability: number; // 0 to 1
-  sentiment: string;
-  keyPhrases: string[];
-  wordCount: number;
-  complexity: 'simple' | 'moderate' | 'complex';
-  tone: 'formal' | 'informal' | 'neutral';
+export interface ReadBehaviorAnalysis {
+  read_pattern: 'sequential' | 'selective' | 'batch' | 'sporadic';
+  read_speed: number;
+  comprehension_score: number;
+  attention_span: number;
+  preferred_times: string[];
+  engagement_depth: 'surface' | 'moderate' | 'deep';
 }
 
-export interface UserBehaviorPattern {
-  userId: string;
-  activityPattern: {
-    peakHours: number[];
-    preferredChannels: string[];
-    responseTime: number;
-    engagementRate: number;
-  };
-  communicationStyle: {
-    averageMessageLength: number;
-    emojiUsage: number;
-    formalityScore: number;
-  };
-  collaborationMetrics: {
-    threadsStarted: number;
-    threadsParticipated: number;
-    mentionsGiven: number;
-    mentionsReceived: number;
-  };
-}
-
-export interface TeamDynamics {
-  teamId: string;
-  collaborationScore: number;
-  communicationFlow: {
-    centralFigures: string[];
-    isolatedMembers: string[];
-    subGroups: string[][];
-  };
-  healthMetrics: {
-    responseRate: number;
-    participationBalance: number;
-    conflictIndicators: number;
-  };
-}
-
-class AIAnalyticsClass {
-  private readonly logger = logger.createLogger('AIAnalytics');
-  private sentimentCache = new Map<string, SentimentAnalysis>();
-  private engagementCache = new Map<string, EngagementPrediction>();
-
-  // Sentiment Analysis
-  analyzeSentiment(text: string): SentimentAnalysis {
-    const cacheKey = this.hashText(text);
+/**
+ * Analyzes read activity patterns for a channel
+ */
+export async function analyzeReadActivity(channelId: string, timestamp: string): Promise<ReadActivityAnalysis> {
+  try {
+    const startTime = Date.now();
     
-    if (this.sentimentCache.has(cacheKey)) {
-      return this.sentimentCache.get(cacheKey)!;
-    }
-
-    const analysis = this.performSentimentAnalysis(text);
-    this.sentimentCache.set(cacheKey, analysis);
-    
-    return analysis;
-  }
-
-  private performSentimentAnalysis(text: string): SentimentAnalysis {
-    // Simplified sentiment analysis - in production, use ML models
-    const positiveWords = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'excited'];
-    const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'dislike', 'sad', 'angry', 'frustrated', 'disappointed', 'worried'];
-    const emotionWords = {
-      joy: ['happy', 'excited', 'thrilled', 'delighted', 'cheerful'],
-      anger: ['angry', 'furious', 'mad', 'irritated', 'annoyed'],
-      fear: ['scared', 'afraid', 'worried', 'anxious', 'nervous'],
-      sadness: ['sad', 'depressed', 'disappointed', 'upset', 'down'],
-      surprise: ['surprised', 'shocked', 'amazed', 'astonished', 'stunned']
-    };
-
-    const words = text.toLowerCase().split(/\W+/);
-    const totalWords = words.length;
-
-    let positiveCount = 0;
-    let negativeCount = 0;
-    const emotions = { joy: 0, anger: 0, fear: 0, sadness: 0, surprise: 0 };
-
-    words.forEach(word => {
-      if (positiveWords.includes(word)) positiveCount++;
-      if (negativeWords.includes(word)) negativeCount++;
-      
-      Object.entries(emotionWords).forEach(([emotion, emotionWordList]) => {
-        if (emotionWordList.includes(word)) {
-          emotions[emotion as keyof typeof emotions]++;
-        }
-      });
+    // Get recent channel history
+    const history = await slackClient.getClient().conversations.history({
+      channel: channelId,
+      latest: timestamp,
+      limit: 100,
     });
 
-    const score = totalWords > 0 ? (positiveCount - negativeCount) / totalWords : 0;
-    const magnitude = totalWords > 0 ? (positiveCount + negativeCount) / totalWords : 0;
+    const messages = history.messages || [];
+    const markedTime = parseFloat(timestamp);
+    const now = Date.now() / 1000;
     
-    let label: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
-    if (score > 0.1) label = 'POSITIVE';
-    else if (score < -0.1) label = 'NEGATIVE';
-    else label = 'NEUTRAL';
-
-    const confidence = Math.min(magnitude * 2, 1);
-
-    // Normalize emotions
-    const totalEmotions = Object.values(emotions).reduce((sum, count) => sum + count, 0);
-    if (totalEmotions > 0) {
-      Object.keys(emotions).forEach(emotion => {
-        emotions[emotion as keyof typeof emotions] /= totalEmotions;
-      });
-    }
-
+    // Calculate read metrics
+    const unreadMessages = messages.filter(m => m.ts && parseFloat(m.ts) > markedTime);
+    const readMessages = messages.filter(m => m.ts && parseFloat(m.ts) <= markedTime);
+    
+    // Calculate reading velocity (messages per hour)
+    const timeSpan = Math.max(1, (now - markedTime) / 3600); // hours
+    const readingVelocity = readMessages.length / timeSpan;
+    
+    // Calculate efficiency score based on message complexity and read speed
+    const avgMessageLength = readMessages.reduce((sum, m) => sum + (m.text?.length || 0), 0) / Math.max(1, readMessages.length);
+    const complexityFactor = Math.min(2, avgMessageLength / 100); // Normalize to 0-2
+    const efficiencyScore = Math.min(100, (readingVelocity * 20) / complexityFactor);
+    
+    // Calculate catch-up score
+    const timeSinceLastRead = (now - markedTime) / 60; // minutes
+    const catchUpScore = Math.max(0, 100 - (timeSinceLastRead * 2)); // Decreases over time
+    
+    // Determine engagement risk
+    const importantUnread = unreadMessages.filter(m => 
+      (m.reactions && m.reactions.length > 0) || 
+      (m.reply_count && m.reply_count > 0) || 
+      m.text?.includes('@channel') || 
+      m.text?.includes('@here') ||
+      m.text?.includes('<@')
+    ).length;
+    
+    let engagementRisk: 'low' | 'medium' | 'high' = 'low';
+    if (importantUnread > 5 || unreadMessages.length > 50) engagementRisk = 'high';
+    else if (importantUnread > 2 || unreadMessages.length > 20) engagementRisk = 'medium';
+    
+    const duration = Date.now() - startTime;
+    logger.info('Read activity analysis completed', { 
+      channelId, 
+      duration, 
+      messagesAnalyzed: messages.length 
+    });
+    
     return {
-      score: Math.max(-1, Math.min(1, score * 5)), // Scale and clamp
-      magnitude,
-      label,
-      confidence,
-      emotions
+      read_count: readMessages.length,
+      unread_count: unreadMessages.length,
+      last_read: new Date(markedTime * 1000).toISOString(),
+      reading_velocity: Math.round(readingVelocity * 100) / 100,
+      efficiency_score: Math.round(efficiencyScore),
+      catch_up_score: Math.round(catchUpScore),
+      engagement_risk: engagementRisk,
     };
-  }
-
-  // Engagement Prediction
-  predictEngagement(content: string, context?: {
-    channel?: string;
-    timeOfDay?: number;
-    dayOfWeek?: number;
-    authorHistory?: any;
-  }): EngagementPrediction {
-    const cacheKey = this.hashText(content + JSON.stringify(context || {}));
     
-    if (this.engagementCache.has(cacheKey)) {
-      return this.engagementCache.get(cacheKey)!;
-    }
-
-    const prediction = this.performEngagementPrediction(content, context);
-    this.engagementCache.set(cacheKey, prediction);
-    
-    return prediction;
-  }
-
-  private performEngagementPrediction(content: string, context?: any): EngagementPrediction {
-    let score = 0.5; // Base score
-    const factors: string[] = [];
-
-    // Content analysis factors
-    const sentiment = this.analyzeSentiment(content);
-    if (sentiment.label === 'POSITIVE') {
-      score += 0.1;
-      factors.push('positive_sentiment');
-    }
-
-    // Length factor
-    const wordCount = content.split(/\W+/).length;
-    if (wordCount >= 10 && wordCount <= 50) {
-      score += 0.1;
-      factors.push('optimal_length');
-    } else if (wordCount > 100) {
-      score -= 0.1;
-      factors.push('too_long');
-    }
-
-    // Question factor
-    if (content.includes('?')) {
-      score += 0.15;
-      factors.push('contains_question');
-    }
-
-    // Emoji factor
-    const emojiCount = (content.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/gu) || []).length;
-    if (emojiCount > 0 && emojiCount <= 3) {
-      score += 0.05;
-      factors.push('appropriate_emoji_usage');
-    }
-
-    // Time-based factors
-    if (context?.timeOfDay) {
-      // Peak engagement hours (9-11 AM, 2-4 PM)
-      if ((context.timeOfDay >= 9 && context.timeOfDay <= 11) || 
-          (context.timeOfDay >= 14 && context.timeOfDay <= 16)) {
-        score += 0.1;
-        factors.push('peak_hours');
-      }
-    }
-
-    // Day of week factor
-    if (context?.dayOfWeek && context.dayOfWeek >= 1 && context.dayOfWeek <= 5) {
-      score += 0.05;
-      factors.push('weekday_posting');
-    }
-
-    // Clamp score
-    score = Math.max(0, Math.min(1, score));
-
-    // Generate recommendation
-    let recommendation = 'Standard engagement expected';
-    if (score > 0.7) {
-      recommendation = 'High engagement likely - great content!';
-    } else if (score < 0.3) {
-      recommendation = 'Consider revising content for better engagement';
-    }
-
+  } catch (error) {
+    logger.error('Failed to analyze read activity', { channelId, timestamp, error });
     return {
-      score,
-      factors,
-      recommendation,
-      optimalTiming: this.getOptimalTiming(context)
+      read_count: 0,
+      unread_count: 0,
+      last_read: new Date().toISOString(),
+      reading_velocity: 0,
+      efficiency_score: 0,
+      catch_up_score: 0,
+      engagement_risk: 'low',
     };
   }
+}
 
-  private getOptimalTiming(_context?: any): { hour: number; dayOfWeek: number } | undefined {
-    // Return optimal posting time based on historical data
-    // This would typically be based on actual analytics
+/**
+ * Analyzes engagement impact of channel activity
+ */
+export async function analyzeEngagementImpact(channelId: string, timestamp: string): Promise<EngagementImpactAnalysis> {
+  try {
+    const startTime = Date.now();
+    const markedTime = parseFloat(timestamp);
+    
+    // Get messages before and after the timestamp
+    const [beforeHistory, afterHistory] = await Promise.all([
+      slackClient.getClient().conversations.history({
+        channel: channelId,
+        latest: timestamp,
+        limit: 50,
+      }),
+      slackClient.getClient().conversations.history({
+        channel: channelId,
+        oldest: timestamp,
+        limit: 50,
+      }),
+    ]);
+
+    const beforeMessages = beforeHistory.messages || [];
+    const afterMessages = afterHistory.messages || [];
+    
+    // Calculate engagement metrics
+    const beforeEngagement = calculateMessageEngagement(beforeMessages);
+    const afterEngagement = calculateMessageEngagement(afterMessages);
+    
+    const engagementChange = afterEngagement - beforeEngagement;
+    const impactScore = Math.abs(engagementChange) * 10; // Scale impact
+    
+    // Calculate participation rate
+    const uniqueUsers = new Set([
+      ...beforeMessages.map(m => m.user).filter(Boolean),
+      ...afterMessages.map(m => m.user).filter(Boolean),
+    ]);
+    const participationRate = (uniqueUsers.size / Math.max(1, beforeMessages.length + afterMessages.length)) * 100;
+    
+    // Calculate missed interactions
+    const missedInteractions = afterMessages.reduce((sum, m) => 
+      sum + (m.reactions?.length || 0) + (m.reply_count || 0), 0
+    );
+    
+    // Calculate social signals
+    const socialSignals = afterMessages.reduce((sum, m) => 
+      sum + (m.reactions?.reduce((rSum, r) => rSum + (r.count || 0), 0) || 0), 0
+    );
+    
+    // Calculate influence metrics
+    const reach = uniqueUsers.size;
+    const resonance = socialSignals / Math.max(1, afterMessages.length);
+    const relevance = afterMessages.filter(m => 
+      m.text?.includes('@') || (m.reactions && m.reactions.length > 0)
+    ).length / Math.max(1, afterMessages.length) * 100;
+    
+    const duration = Date.now() - startTime;
+    logger.info('Engagement impact analysis completed', { 
+      channelId, 
+      duration, 
+      impactScore 
+    });
+    
     return {
-      hour: 10, // 10 AM
-      dayOfWeek: 2 // Tuesday
+      impact_score: Math.round(impactScore),
+      engagement_change: Math.round(engagementChange * 100) / 100,
+      participation_rate: Math.round(participationRate * 100) / 100,
+      missed_interactions: missedInteractions,
+      social_signals: socialSignals,
+      influence_metrics: {
+        reach: reach,
+        resonance: Math.round(resonance * 100) / 100,
+        relevance: Math.round(relevance * 100) / 100,
+      },
     };
-  }
-
-  // Content Analysis
-  analyzeContent(text: string): ContentAnalysis {
-    const words = text.split(/\W+/).filter(word => word.length > 0);
-    const wordCount = words.length;
     
-    // Topic extraction (simplified)
-    const topics = this.extractTopics(text);
-    
-    // Readability calculation (simplified Flesch Reading Ease)
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-    const avgWordsPerSentence = sentences.length > 0 ? wordCount / sentences.length : 0;
-    const avgSyllablesPerWord = this.calculateAvgSyllables(words);
-    
-    const fleschScore = 206.835 - (1.015 * avgWordsPerSentence) - (84.6 * avgSyllablesPerWord);
-    const readability = Math.max(0, Math.min(1, fleschScore / 100));
-
-    // Key phrases extraction
-    const keyPhrases = this.extractKeyPhrases(text);
-
-    // Complexity assessment
-    let complexity: 'simple' | 'moderate' | 'complex';
-    if (avgWordsPerSentence < 15 && avgSyllablesPerWord < 1.5) {
-      complexity = 'simple';
-    } else if (avgWordsPerSentence < 25 && avgSyllablesPerWord < 2) {
-      complexity = 'moderate';
-    } else {
-      complexity = 'complex';
-    }
-
-    // Tone analysis
-    const tone = this.analyzeTone(text);
-    const sentiment = this.analyzeSentiment(text);
-
+  } catch (error) {
+    logger.error('Failed to analyze engagement impact', { channelId, timestamp, error });
     return {
-      topics,
-      readability,
-      sentiment: sentiment.label.toLowerCase(),
-      keyPhrases,
-      wordCount,
-      complexity,
-      tone
+      impact_score: 0,
+      engagement_change: 0,
+      participation_rate: 0,
+      missed_interactions: 0,
+      social_signals: 0,
+      influence_metrics: { reach: 0, resonance: 0, relevance: 0 },
     };
   }
+}
 
-  private extractTopics(text: string): string[] {
-    // Simplified topic extraction
-    const topicKeywords = {
-      technology: ['tech', 'software', 'code', 'programming', 'development', 'api', 'system'],
-      business: ['business', 'revenue', 'profit', 'customer', 'market', 'sales', 'strategy'],
-      project: ['project', 'deadline', 'milestone', 'task', 'deliverable', 'timeline'],
-      meeting: ['meeting', 'call', 'discussion', 'agenda', 'presentation', 'conference'],
-      support: ['help', 'support', 'issue', 'problem', 'bug', 'error', 'fix']
-    };
-
-    const topics: string[] = [];
-    const lowerText = text.toLowerCase();
-
-    Object.entries(topicKeywords).forEach(([topic, keywords]) => {
-      if (keywords.some(keyword => lowerText.includes(keyword))) {
-        topics.push(topic);
-      }
+/**
+ * Analyzes unread messages in a channel
+ */
+export async function analyzeUnreadMessages(channelId: string, timestamp: string): Promise<UnreadMessagesAnalysis> {
+  try {
+    const startTime = Date.now();
+    
+    // Get unread messages
+    const history = await slackClient.getClient().conversations.history({
+      channel: channelId,
+      oldest: timestamp,
+      limit: 100,
     });
 
-    return topics;
-  }
-
-  private extractKeyPhrases(text: string): string[] {
-    // Simplified key phrase extraction
-    const phrases = text.match(/\b\w+(?:\s+\w+){1,2}\b/g) || [];
-    const phraseCounts = new Map<string, number>();
-
-    phrases.forEach(phrase => {
-      const normalized = phrase.toLowerCase().trim();
-      if (normalized.length > 5) { // Filter short phrases
-        phraseCounts.set(normalized, (phraseCounts.get(normalized) || 0) + 1);
-      }
-    });
-
-    return Array.from(phraseCounts.entries())
-      .sort((a, b) => b[1] - a[1])
+    const unreadMessages = history.messages || [];
+    
+    // Categorize content
+    const contentCategories = categorizeMessages(unreadMessages);
+    
+    // Analyze urgency
+    const urgencyDistribution = analyzeUrgency(unreadMessages);
+    
+    // Identify key participants
+    const participantCounts = unreadMessages.reduce((acc: Record<string, number>, m) => {
+      if (m.user) acc[m.user] = (acc[m.user] || 0) + 1;
+      return acc;
+    }, {});
+    
+    const keyParticipants = Object.entries(participantCounts)
+      .sort(([, a], [, b]) => (b as number) - (a as number))
       .slice(0, 5)
-      .map(([phrase]) => phrase);
-  }
-
-  private calculateAvgSyllables(words: string[]): number {
-    if (words.length === 0) return 0;
+      .map(([user]) => user);
     
-    const totalSyllables = words.reduce((sum, word) => {
-      return sum + this.countSyllables(word);
-    }, 0);
+    // Estimate read time (average 200 words per minute)
+    const totalWords = unreadMessages.reduce((sum, m) => 
+      sum + (m.text?.split(' ').length || 0), 0
+    );
+    const estimatedReadTime = Math.ceil(totalWords / 200); // minutes
     
-    return totalSyllables / words.length;
-  }
-
-  private countSyllables(word: string): number {
-    // Simplified syllable counting
-    const vowels = 'aeiouy';
-    let count = 0;
-    let previousWasVowel = false;
+    // Count priority messages
+    const priorityMessages = unreadMessages.filter(m =>
+      (m.reactions && m.reactions.length > 0) ||
+      (m.reply_count && m.reply_count > 0) ||
+      m.text?.includes('@channel') ||
+      m.text?.includes('@here') ||
+      m.text?.includes('<@') ||
+      urgencyDistribution.high > 0
+    ).length;
     
-    for (let i = 0; i < word.length; i++) {
-      const isVowel = vowels.includes(word[i].toLowerCase());
-      if (isVowel && !previousWasVowel) {
-        count++;
-      }
-      previousWasVowel = isVowel;
-    }
-    
-    // Handle silent e
-    if (word.endsWith('e') && count > 1) {
-      count--;
-    }
-    
-    return Math.max(1, count);
-  }
-
-  private analyzeTone(text: string): 'formal' | 'informal' | 'neutral' {
-    const formalIndicators = ['please', 'thank you', 'regards', 'sincerely', 'furthermore', 'however'];
-    const informalIndicators = ['hey', 'hi', 'yeah', 'ok', 'cool', 'awesome', 'lol'];
-    
-    const lowerText = text.toLowerCase();
-    const formalCount = formalIndicators.filter(indicator => lowerText.includes(indicator)).length;
-    const informalCount = informalIndicators.filter(indicator => lowerText.includes(indicator)).length;
-    
-    if (formalCount > informalCount) return 'formal';
-    if (informalCount > formalCount) return 'informal';
-    return 'neutral';
-  }
-
-  // User Behavior Analysis
-  analyzeUserBehavior(userId: string, messages: any[]): UserBehaviorPattern {
-    // This would typically analyze historical message data
-    const activityByHour = new Array(24).fill(0);
-    const channelActivity = new Map<string, number>();
-    let totalResponseTime = 0;
-    let responseCount = 0;
-
-    messages.forEach(message => {
-      const hour = new Date(parseFloat(message.ts) * 1000).getHours();
-      activityByHour[hour]++;
-      
-      const channel = message.channel;
-      channelActivity.set(channel, (channelActivity.get(channel) || 0) + 1);
+    const duration = Date.now() - startTime;
+    logger.info('Unread messages analysis completed', { 
+      channelId, 
+      duration, 
+      unreadCount: unreadMessages.length 
     });
-
-    const peakHours = activityByHour
-      .map((count, hour) => ({ hour, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 3)
-      .map(item => item.hour);
-
-    const preferredChannels = Array.from(channelActivity.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([channel]) => channel);
-
-    return {
-      userId,
-      activityPattern: {
-        peakHours,
-        preferredChannels,
-        responseTime: responseCount > 0 ? totalResponseTime / responseCount : 0,
-        engagementRate: 0.75 // Placeholder
-      },
-      communicationStyle: {
-        averageMessageLength: messages.reduce((sum, m) => sum + (m.text?.length || 0), 0) / messages.length,
-        emojiUsage: 0.2, // Placeholder
-        formalityScore: 0.5 // Placeholder
-      },
-      collaborationMetrics: {
-        threadsStarted: 0, // Placeholder
-        threadsParticipated: 0, // Placeholder
-        mentionsGiven: 0, // Placeholder
-        mentionsReceived: 0 // Placeholder
-      }
-    };
-  }
-
-  // Team Dynamics Analysis
-  analyzeTeamDynamics(teamId: string, members: string[], _interactions: any[]): TeamDynamics {
-    // Simplified team dynamics analysis
-    const collaborationScore = Math.random() * 0.3 + 0.7; // Placeholder: 0.7-1.0
     
     return {
-      teamId,
-      collaborationScore,
-      communicationFlow: {
-        centralFigures: members.slice(0, 2), // Placeholder
-        isolatedMembers: [],
-        subGroups: [members.slice(0, Math.ceil(members.length / 2))]
-      },
-      healthMetrics: {
-        responseRate: 0.85,
-        participationBalance: 0.75,
-        conflictIndicators: 0.1
-      }
+      unread_count: unreadMessages.length,
+      priority_messages: priorityMessages,
+      estimated_read_time: estimatedReadTime,
+      content_categories: contentCategories,
+      urgency_distribution: urgencyDistribution,
+      key_participants: keyParticipants,
     };
-  }
-
-  // Utility methods
-  private hashText(text: string): string {
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return hash.toString();
-  }
-
-  clearCache(): void {
-    this.sentimentCache.clear();
-    this.engagementCache.clear();
-    this.logger.info('AI Analytics cache cleared');
-  }
-
-  // Channel name analysis for creation
-  analyzeChannelName(name: string): {
-    appropriateness: number;
-    suggestions: string[];
-    sentiment: string;
-  } {
-    const sentiment = this.analyzeSentiment(name);
-    const appropriateness = this.calculateChannelNameAppropriateness(name);
-    const suggestions = this.generateChannelNameSuggestions(name);
-
+    
+  } catch (error) {
+    logger.error('Failed to analyze unread messages', { channelId, timestamp, error });
     return {
-      appropriateness,
-      suggestions,
-      sentiment: sentiment.label.toLowerCase()
+      unread_count: 0,
+      priority_messages: 0,
+      estimated_read_time: 0,
+      content_categories: {},
+      urgency_distribution: { low: 0, medium: 0, high: 0 },
+      key_participants: [],
     };
-  }
-
-  private calculateChannelNameAppropriateness(name: string): number {
-    let score = 0.8; // Base score
-
-    // Length check
-    if (name.length >= 3 && name.length <= 15) {
-      score += 0.1;
-    } else {
-      score -= 0.2;
-    }
-
-    // Format check
-    if (/^[a-z0-9-_]+$/.test(name)) {
-      score += 0.1;
-    } else {
-      score -= 0.3;
-    }
-
-    // Meaningful name check
-    if (name.includes('-') || name.includes('_')) {
-      score += 0.05; // Structured naming
-    }
-
-    return Math.max(0, Math.min(1, score));
-  }
-
-  private generateChannelNameSuggestions(name: string): string[] {
-    const suggestions: string[] = [];
-    
-    if (name.length > 21) {
-      suggestions.push('Consider shortening the channel name');
-    }
-    
-    if (!/^[a-z0-9-_]+$/.test(name)) {
-      suggestions.push('Use only lowercase letters, numbers, hyphens, and underscores');
-    }
-    
-    if (name.startsWith('-') || name.endsWith('-')) {
-      suggestions.push('Avoid starting or ending with hyphens');
-    }
-
-    return suggestions;
   }
 }
 
-export const AIAnalytics = new AIAnalyticsClass();
+/**
+ * Analyzes channel activity patterns
+ */
+export async function analyzeChannelActivity(channelId: string): Promise<ChannelActivityAnalysis> {
+  try {
+    const startTime = Date.now();
+    
+    // Get recent channel history
+    const history = await slackClient.getClient().conversations.history({
+      channel: channelId,
+      limit: 200,
+    });
+
+    const messages = history.messages || [];
+    const now = Date.now() / 1000;
+    const oneDayAgo = now - 86400;
+    
+    // Filter to last 24 hours
+    const dailyMessages = messages.filter(m => m.ts && parseFloat(m.ts) > oneDayAgo);
+    
+    // Count unique active users
+    const activeUsers = new Set(dailyMessages.map(m => m.user).filter(Boolean)).size;
+    
+    // Analyze hourly distribution
+    const hourlyDistribution = analyzeHourlyDistribution(dailyMessages);
+    const peakHours = findPeakHours(hourlyDistribution);
+    
+    // Calculate activity trend
+    const activityTrend = calculateActivityTrend(messages);
+    
+    // Analyze engagement patterns
+    const engagementPatterns = analyzeEngagementPatterns(dailyMessages);
+    
+    const duration = Date.now() - startTime;
+    logger.info('Channel activity analysis completed', { 
+      channelId, 
+      duration, 
+      dailyMessages: dailyMessages.length 
+    });
+    
+    return {
+      daily_messages: dailyMessages.length,
+      active_users: activeUsers,
+      peak_hours: peakHours,
+      activity_trend: activityTrend,
+      engagement_patterns: engagementPatterns,
+    };
+    
+  } catch (error) {
+    logger.error('Failed to analyze channel activity', { channelId, error });
+    return {
+      daily_messages: 0,
+      active_users: 0,
+      peak_hours: [],
+      activity_trend: 'stable',
+      engagement_patterns: {
+        high_engagement_periods: [],
+        low_engagement_periods: [],
+        average_response_time: 0,
+      },
+    };
+  }
+}
+
+/**
+ * Analyzes read behavior patterns
+ */
+export function analyzeReadBehavior(timestamp: string): ReadBehaviorAnalysis {
+  try {
+    const markedTime = parseFloat(timestamp);
+    const now = Date.now() / 1000;
+    const timeSinceRead = now - markedTime;
+    
+    // Determine read pattern based on timing
+    let readPattern: 'sequential' | 'selective' | 'batch' | 'sporadic' = 'sequential';
+    if (timeSinceRead > 86400) readPattern = 'batch'; // > 1 day
+    else if (timeSinceRead > 3600) readPattern = 'selective'; // > 1 hour
+    else if (timeSinceRead < 300) readPattern = 'sequential'; // < 5 minutes
+    else readPattern = 'sporadic';
+    
+    // Calculate read speed (messages per minute, estimated)
+    const readSpeed = Math.max(1, 60 / Math.max(1, timeSinceRead / 60));
+    
+    // Estimate comprehension score based on read speed and pattern
+    let comprehensionScore = 100;
+    if (readSpeed > 10) comprehensionScore = 60; // Too fast
+    else if (readSpeed < 1) comprehensionScore = 80; // Too slow
+    else comprehensionScore = 90; // Good pace
+    
+    // Calculate attention span (estimated based on read pattern)
+    const attentionSpan = readPattern === 'sequential' ? 100 : 
+                         readPattern === 'selective' ? 80 :
+                         readPattern === 'batch' ? 60 : 40;
+    
+    // Determine preferred reading times
+    const readHour = new Date(markedTime * 1000).getHours();
+    const preferredTimes = categorizeReadingTime(readHour);
+    
+    // Determine engagement depth
+    let engagementDepth: 'surface' | 'moderate' | 'deep' = 'moderate';
+    if (readPattern === 'sequential' && readSpeed < 5) engagementDepth = 'deep';
+    else if (readPattern === 'batch' || readSpeed > 8) engagementDepth = 'surface';
+    
+    return {
+      read_pattern: readPattern,
+      read_speed: Math.round(readSpeed * 100) / 100,
+      comprehension_score: comprehensionScore,
+      attention_span: attentionSpan,
+      preferred_times: preferredTimes,
+      engagement_depth: engagementDepth,
+    };
+    
+  } catch (error) {
+    logger.error('Failed to analyze read behavior', { timestamp, error });
+    return {
+      read_pattern: 'sequential',
+      read_speed: 1,
+      comprehension_score: 50,
+      attention_span: 50,
+      preferred_times: ['business_hours'],
+      engagement_depth: 'moderate',
+    };
+  }
+}
+
+/**
+ * Calculates engagement score for reactions and message
+ */
+export function calculateEngagementScore(reactions: any[], message: any): number {
+  try {
+    if (!reactions || reactions.length === 0) return 0;
+    
+    const totalReactions = reactions.reduce((sum: number, r: any) => sum + (r.count || 0), 0);
+    const reactionDiversity = reactions.length;
+    const uniqueReactors = new Set(reactions.flatMap(r => r.users || [])).size;
+    
+    // Calculate message age factor (newer messages get slight boost)
+    const messageAge = message.ts ? (Date.now() / 1000 - parseFloat(message.ts)) / 3600 : 0; // hours
+    const ageFactor = Math.max(0.5, 1 - (messageAge / 168)); // Decay over a week
+    
+    // Calculate sentiment factor
+    const sentimentFactor = calculateSentimentFactor(reactions);
+    
+    // Base score calculation
+    let score = (totalReactions * 10) + (reactionDiversity * 5) + (uniqueReactors * 3);
+    
+    // Apply factors
+    score = score * ageFactor * sentimentFactor;
+    
+    // Normalize to 0-100 scale
+    return Math.min(100, Math.round(score));
+    
+  } catch (error) {
+    logger.error('Failed to calculate engagement score', { error });
+    return 0;
+  }
+}
+
+// Helper functions
+
+function calculateMessageEngagement(messages: any[]): number {
+  return messages.reduce((sum, m) => {
+    const reactions = (m.reactions || []).reduce((rSum: number, r: any) => rSum + (r.count || 0), 0);
+    const replies = m.reply_count || 0;
+    return sum + reactions + replies;
+  }, 0) / Math.max(1, messages.length);
+}
+
+function categorizeMessages(messages: any[]): Record<string, number> {
+  const categories: Record<string, number> = {
+    questions: 0,
+    announcements: 0,
+    discussions: 0,
+    files: 0,
+    mentions: 0,
+    other: 0,
+  };
+  
+  messages.forEach(m => {
+    const text = (m.text || '').toLowerCase();
+    if (text.includes('?')) categories.questions++;
+    else if (text.includes('@channel') || text.includes('@here')) categories.announcements++;
+    else if (m.files && m.files.length > 0) categories.files++;
+    else if (text.includes('<@')) categories.mentions++;
+    else if (m.reply_count > 0) categories.discussions++;
+    else categories.other++;
+  });
+  
+  return categories;
+}
+
+function analyzeUrgency(messages: any[]): Record<string, number> {
+  const urgency = { low: 0, medium: 0, high: 0 };
+  
+  messages.forEach(m => {
+    const text = (m.text || '').toLowerCase();
+    const hasUrgentKeywords = /urgent|asap|immediately|critical|emergency/.test(text);
+    const hasMentions = text.includes('<@') || text.includes('@channel') || text.includes('@here');
+    const hasReactions = (m.reactions || []).length > 0;
+    
+    if (hasUrgentKeywords || (hasMentions && hasReactions)) urgency.high++;
+    else if (hasMentions || hasReactions) urgency.medium++;
+    else urgency.low++;
+  });
+  
+  return urgency;
+}
+
+function analyzeHourlyDistribution(messages: any[]): Record<number, number> {
+  const distribution: Record<number, number> = {};
+  
+  messages.forEach(m => {
+    const hour = new Date(parseFloat(m.ts) * 1000).getHours();
+    distribution[hour] = (distribution[hour] || 0) + 1;
+  });
+  
+  return distribution;
+}
+
+function findPeakHours(hourlyDistribution: Record<number, number>): string[] {
+  const entries = Object.entries(hourlyDistribution);
+  if (entries.length === 0) return [];
+  
+  const maxCount = Math.max(...entries.map(([, count]) => count));
+  const threshold = maxCount * 0.8; // Consider hours with 80%+ of peak activity
+  
+  return entries
+    .filter(([, count]) => count >= threshold)
+    .map(([hour]) => `${hour}:00`)
+    .sort();
+}
+
+function calculateActivityTrend(messages: any[]): 'increasing' | 'decreasing' | 'stable' {
+  if (messages.length < 20) return 'stable';
+  
+  const midpoint = Math.floor(messages.length / 2);
+  const recentMessages = messages.slice(0, midpoint);
+  const olderMessages = messages.slice(midpoint);
+  
+  const recentAvgTime = recentMessages.reduce((sum, m) => sum + parseFloat(m.ts), 0) / recentMessages.length;
+  const olderAvgTime = olderMessages.reduce((sum, m) => sum + parseFloat(m.ts), 0) / olderMessages.length;
+  
+  const timeDiff = recentAvgTime - olderAvgTime;
+  const expectedDiff = (Date.now() / 1000 - parseFloat(messages[messages.length - 1].ts)) / 2;
+  
+  if (timeDiff < expectedDiff * 0.8) return 'increasing';
+  if (timeDiff > expectedDiff * 1.2) return 'decreasing';
+  return 'stable';
+}
+
+function analyzeEngagementPatterns(messages: any[]): {
+  high_engagement_periods: string[];
+  low_engagement_periods: string[];
+  average_response_time: number;
+} {
+  const hourlyEngagement: Record<number, number> = {};
+  const responseTimes: number[] = [];
+  
+  messages.forEach((m, index) => {
+    const hour = new Date(parseFloat(m.ts) * 1000).getHours();
+    const engagement = (m.reactions || []).reduce((sum: number, r: any) => sum + (r.count || 0), 0) + (m.reply_count || 0);
+    hourlyEngagement[hour] = (hourlyEngagement[hour] || 0) + engagement;
+    
+    // Calculate response time to previous message
+    if (index > 0) {
+      const prevTime = parseFloat(messages[index - 1].ts);
+      const currentTime = parseFloat(m.ts);
+      responseTimes.push(currentTime - prevTime);
+    }
+  });
+  
+  const avgEngagement = Object.values(hourlyEngagement).reduce((sum, eng) => sum + eng, 0) / Object.keys(hourlyEngagement).length;
+  
+  const highEngagementPeriods = Object.entries(hourlyEngagement)
+    .filter(([, engagement]) => engagement > avgEngagement * 1.2)
+    .map(([hour]) => `${hour}:00-${parseInt(hour) + 1}:00`);
+    
+  const lowEngagementPeriods = Object.entries(hourlyEngagement)
+    .filter(([, engagement]) => engagement < avgEngagement * 0.5)
+    .map(([hour]) => `${hour}:00-${parseInt(hour) + 1}:00`);
+  
+  const averageResponseTime = responseTimes.length > 0 
+    ? responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length 
+    : 0;
+  
+  return {
+    high_engagement_periods: highEngagementPeriods,
+    low_engagement_periods: lowEngagementPeriods,
+    average_response_time: Math.round(averageResponseTime),
+  };
+}
+
+function categorizeReadingTime(hour: number): string[] {
+  const categories = [];
+  
+  if (hour >= 6 && hour <= 8) categories.push('early_morning');
+  if (hour >= 9 && hour <= 17) categories.push('business_hours');
+  if (hour >= 18 && hour <= 22) categories.push('evening');
+  if (hour >= 23 || hour <= 5) categories.push('late_night');
+  if (hour >= 12 && hour <= 14) categories.push('lunch_time');
+  
+  return categories.length > 0 ? categories : ['business_hours'];
+}
+
+function calculateSentimentFactor(reactions: any[]): number {
+  // Simple sentiment analysis based on common emoji patterns
+  const positiveEmojis = ['👍', '❤️', '😊', '🎉', '✅', '👏', '🔥', '💯'];
+  const negativeEmojis = ['👎', '😞', '😢', '❌', '😡', '💔'];
+  
+  let positiveCount = 0;
+  let negativeCount = 0;
+  
+  reactions.forEach(r => {
+    if (positiveEmojis.includes(r.name)) positiveCount += r.count || 0;
+    if (negativeEmojis.includes(r.name)) negativeCount += r.count || 0;
+  });
+  
+  const totalSentimentReactions = positiveCount + negativeCount;
+  if (totalSentimentReactions === 0) return 1; // Neutral
+  
+  const sentimentRatio = positiveCount / totalSentimentReactions;
+  return 0.5 + (sentimentRatio * 0.5); // Scale from 0.5 to 1.0
+}
+
+/**
+ * Generate AI-powered recommendations for marking conversations as read
+ */
+export function generateMarkRecommendations(analytics: any, channelId: string): string[] {
+  const recommendations: string[] = [];
+  
+  try {
+    // Analyze read activity
+    if (analytics.read_activity) {
+      if (analytics.read_activity.engagement_risk === 'high') {
+        recommendations.push('🚨 High engagement risk detected - review important unread messages immediately');
+      }
+      
+      if (analytics.read_activity.catch_up_score < 40) {
+        recommendations.push('📱 Consider setting up notifications for this channel to stay more current');
+      }
+      
+      if (analytics.read_activity.efficiency_score < 50) {
+        recommendations.push('⚡ Low read efficiency - consider batch reading or using thread summaries');
+      }
+    }
+    
+    // Analyze channel intelligence
+    if (analytics.channel_intelligence) {
+      const unread = analytics.channel_intelligence.unread_analysis;
+      if (unread?.priority_messages > 3) {
+        recommendations.push(`⭐ ${unread.priority_messages} priority messages need attention - review highly engaged content first`);
+      }
+      
+      if (unread?.estimated_read_time > 15) {
+        recommendations.push(`⏱️ Estimated ${unread.estimated_read_time} minutes to catch up - consider scheduling focused reading time`);
+      }
+      
+      const activity = analytics.channel_intelligence.activity_patterns;
+      if (activity?.recent_activity?.activity_level === 'high') {
+        recommendations.push('📈 High channel activity detected - consider increasing read frequency to stay engaged');
+      }
+    }
+    
+    // Add general recommendations if none specific
+    if (recommendations.length === 0) {
+      recommendations.push('✅ Channel is up to date - great job staying current!');
+      recommendations.push('💡 Consider reviewing pinned messages for important updates');
+    }
+    
+    return recommendations;
+    
+  } catch (error) {
+    logger.error('Failed to generate mark recommendations', { error });
+    return ['📖 Stay engaged with regular channel reading'];
+  }
+}
