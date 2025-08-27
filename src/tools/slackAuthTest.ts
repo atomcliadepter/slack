@@ -4,6 +4,16 @@ import { slackClient } from '@/utils/slackClient';
 import { Validator, ToolSchemas } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import {
+  assessConnectionQuality,
+  analyzeTokenType,
+  analyzePermissionScope,
+  assessSecurityPosture,
+  determineAccessLevel,
+  generateSecurityRecommendations,
+  analyzeWorkspaceSettings,
+  measureConnectionLatency,
+} from '@/utils/authAnalytics';
 
 /**
  * Enhanced Slack Auth Test Tool

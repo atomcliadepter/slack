@@ -5,9 +5,94 @@
 
 import * as stubs from './aiAnalyticsStubs';
 import * as missing from './missingFunctions';
+import * as functionStubs from './functionStubs';
 
 // Make all stub functions available globally
 declare global {
+  // Auth Test Functions
+  function assessComplianceStatus(authResult: any): any;
+  function generateAuthRecommendations(authResult: any, teamInfo?: any): string[];
+  function analyzeAuthError(error: any): any;
+  function inferTokenCapabilities(authResult: any): string[];
+  function estimateScopeLevel(authResult: any): string;
+  function identifySecurityFactors(authResult: any): string[];
+  function assessSecurityRisks(authResult: any): string[];
+  function estimateWorkspaceSize(teamInfo: any): string;
+  function assessConfigurationCompleteness(teamInfo: any): number;
+  function calculateComplianceScore(authResult: any): number;
+  function generateTroubleshootingSteps(error: any): string[];
+
+  // Bookmark Functions
+  function analyzeBookmarkTypes(bookmarks: any[]): any;
+  function calculateOrganizationScore(bookmarks: any[]): number;
+  function estimateUsagePatterns(bookmarks: any[]): any;
+  function calculateAccessibilityScore(bookmarks: any[]): number;
+  function generateBookmarkRecommendations(bookmarks: any[]): string[];
+
+  // Chat Delete Functions
+  function assessDeletionImpact(message: any): any;
+  function calculateEngagementLoss(message: any): number;
+  function assessContextDisruption(message: any): any;
+  function assessInformationLoss(message: any): any;
+  function assessThreadImpact(message: any): any;
+  function generateDeletionRecommendations(message: any): string[];
+  function calculateContextImportance(message: any): number;
+
+  // Conversation History Functions
+  function analyzeMessages(messages: any[]): any;
+  function calculateEngagementMetrics(messages: any[]): any;
+  function analyzeContent(messages: any[]): any;
+  function analyzeTemporalPatterns(messages: any[]): any;
+  function analyzeThreads(messages: any[]): any;
+  function analyzeInteractions(messages: any[]): any;
+  function calculateCommunicationVelocity(messages: any[]): number;
+  function analyzeTopicSentiment(messages: any[]): any;
+  function generateHistoryRecommendations(analysis: any): string[];
+  function determineActivityPattern(messages: any[]): string;
+  function determineTone(text: string): string;
+
+  // Conversation Info Functions
+  function calculateActivityScore(channel: any): number;
+  function calculateHealthScore(channel: any): number;
+  function analyzeMemberEngagement(members: any[]): any;
+  function analyzeChannelContent(messages: any[]): any;
+  function getEngagementLevel(channel: any): string;
+  function getActivityTrend(channel: any): string;
+  function generateChannelRecommendations(analysis: any): string[];
+
+  // Conversation Mark Functions
+  function analyzeReadActivity(channelId: string, timestamp: string): any;
+  function analyzeEngagementImpact(channelId: string, timestamp: string): any;
+  function analyzeUnreadMessages(messages: any[]): any;
+  function analyzeChannelActivity(channelId: string): any;
+  function analyzeReadBehavior(timestamp: string): any;
+  function generateMarkRecommendations(analysis: any): string[];
+  function calculateReadEfficiency(messages: any[]): number;
+  function calculateCatchUpScore(messages: any[]): number;
+  function calculateEngagementRisk(messages: any[]): string;
+  function generateContentSummary(messages: any[]): any;
+
+  // Reaction Functions
+  function inferCommunicationIntent(reaction: string): string;
+  function calculateEngagementScore(reactions: any[], message?: any): number;
+  function assessMessageToneImpact(message: any, reaction: string): any;
+
+  // Search Functions
+  function analyzeSearchResults(results: any[]): any;
+  function categorizeSearchResults(results: any[]): any;
+  function calculateSearchRelevance(query: string, results: any[]): number;
+  function analyzeSearchPatterns(query: string): any;
+  function generateSearchInsights(results: any[]): any;
+  function analyzeQueryComplexity(query: string): string;
+  function generateSearchRecommendations(analysis: any): string[];
+
+  // Generic Functions
+  function generateUserRecommendations(user: any): string[];
+  function generatePinRecommendations(pins: any[]): string[];
+  function calculateActivityTrend(data: any[]): string;
+  function calculateUXScore(data: any): number;
+  function calculateEngagementReduction(before: any, after: any): number;
+
   // Emoji and Sentiment Analysis
   function getEmojiSentiment(emoji: string): number;
   function categorizeEmoji(emoji: string): string;
@@ -854,6 +939,90 @@ Object.assign(globalThis, {
   identifyActivityHotspots: () => ({ hotspots: ['general'] }),
   analyzeUserBehavior: () => ({ behavior_patterns: ['active'] }),
   
+  // Auth Test Functions
+  assessComplianceStatus: functionStubs.assessComplianceStatus,
+  generateAuthRecommendations: functionStubs.generateAuthRecommendations,
+  analyzeAuthError: functionStubs.analyzeAuthError,
+  inferTokenCapabilities: functionStubs.inferTokenCapabilities,
+  estimateScopeLevel: functionStubs.estimateScopeLevel,
+  identifySecurityFactors: functionStubs.identifySecurityFactors,
+  assessSecurityRisks: functionStubs.assessSecurityRisks,
+  estimateWorkspaceSize: functionStubs.estimateWorkspaceSize,
+  assessConfigurationCompleteness: functionStubs.assessConfigurationCompleteness,
+  calculateComplianceScore: functionStubs.calculateComplianceScore,
+  generateTroubleshootingSteps: functionStubs.generateTroubleshootingSteps,
+
+  // Bookmark Functions
+  analyzeBookmarkTypes: functionStubs.analyzeBookmarkTypes,
+  calculateOrganizationScore: functionStubs.calculateOrganizationScore,
+  estimateUsagePatterns: functionStubs.estimateUsagePatterns,
+  calculateAccessibilityScore: functionStubs.calculateAccessibilityScore,
+  generateBookmarkRecommendations: functionStubs.generateBookmarkRecommendations,
+
+  // Chat Delete Functions
+  assessDeletionImpact: functionStubs.assessDeletionImpact,
+  calculateEngagementLoss: functionStubs.calculateEngagementLoss,
+  assessContextDisruption: functionStubs.assessContextDisruption,
+  assessInformationLoss: functionStubs.assessInformationLoss,
+  assessThreadImpact: functionStubs.assessThreadImpact,
+  generateDeletionRecommendations: functionStubs.generateDeletionRecommendations,
+  calculateContextImportance: functionStubs.calculateContextImportance,
+
+  // Conversation History Functions
+  analyzeMessages: functionStubs.analyzeMessages,
+  calculateEngagementMetrics: functionStubs.calculateEngagementMetrics,
+  analyzeContent: functionStubs.analyzeContent,
+  analyzeTemporalPatterns: functionStubs.analyzeTemporalPatterns,
+  analyzeThreads: functionStubs.analyzeThreads,
+  analyzeInteractions: functionStubs.analyzeInteractions,
+  calculateCommunicationVelocity: functionStubs.calculateCommunicationVelocity,
+  analyzeTopicSentiment: functionStubs.analyzeTopicSentiment,
+  generateHistoryRecommendations: functionStubs.generateHistoryRecommendations,
+  determineActivityPattern: functionStubs.determineActivityPattern,
+  determineTone: functionStubs.determineTone,
+
+  // Conversation Info Functions
+  calculateActivityScore: functionStubs.calculateActivityScore,
+  calculateHealthScore: functionStubs.calculateHealthScore,
+  analyzeMemberEngagement: functionStubs.analyzeMemberEngagement,
+  analyzeChannelContent: functionStubs.analyzeChannelContent,
+  getEngagementLevel: functionStubs.getEngagementLevel,
+  getActivityTrend: functionStubs.getActivityTrend,
+  generateChannelRecommendations: functionStubs.generateChannelRecommendations,
+
+  // Conversation Mark Functions
+  analyzeReadActivity: functionStubs.analyzeReadActivity,
+  analyzeEngagementImpact: functionStubs.analyzeEngagementImpact,
+  analyzeUnreadMessages: functionStubs.analyzeUnreadMessages,
+  analyzeChannelActivity: functionStubs.analyzeChannelActivity,
+  analyzeReadBehavior: functionStubs.analyzeReadBehavior,
+  generateMarkRecommendations: functionStubs.generateMarkRecommendations,
+  calculateReadEfficiency: functionStubs.calculateReadEfficiency,
+  calculateCatchUpScore: functionStubs.calculateCatchUpScore,
+  calculateEngagementRisk: functionStubs.calculateEngagementRisk,
+  generateContentSummary: functionStubs.generateContentSummary,
+
+  // Reaction Functions
+  inferCommunicationIntent: functionStubs.inferCommunicationIntent,
+  calculateEngagementScore: functionStubs.calculateEngagementScore,
+  assessMessageToneImpact: functionStubs.assessMessageToneImpact,
+
+  // Search Functions
+  analyzeSearchResults: functionStubs.analyzeSearchResults,
+  categorizeSearchResults: functionStubs.categorizeSearchResults,
+  calculateSearchRelevance: functionStubs.calculateSearchRelevance,
+  analyzeSearchPatterns: functionStubs.analyzeSearchPatterns,
+  generateSearchInsights: functionStubs.generateSearchInsights,
+  analyzeQueryComplexity: functionStubs.analyzeQueryComplexity,
+  generateSearchRecommendations: functionStubs.generateSearchRecommendations,
+
+  // Generic Functions
+  generateUserRecommendations: functionStubs.generateUserRecommendations,
+  generatePinRecommendations: functionStubs.generatePinRecommendations,
+  calculateActivityTrend: functionStubs.calculateActivityTrend,
+  calculateUXScore: functionStubs.calculateUXScore,
+  calculateEngagementReduction: functionStubs.calculateEngagementReduction,
+
   // Channel analysis stubs
   determineEditType: () => 'content_update',
   analyzeStructuralChanges: () => ({ changes: [] }),
