@@ -1,212 +1,372 @@
-
 # Enhanced MCP Slack SDK API Documentation
 
 ## Overview
 
-The Enhanced MCP Slack SDK provides comprehensive tools for interacting with Slack workspaces through the Model Context Protocol (MCP). This documentation covers all available tools and their usage.
+The Enhanced MCP Slack SDK provides 33 comprehensive tools for Slack integration through the Model Context Protocol (MCP). Each tool is designed with production-ready features including error handling, validation, logging, and analytics.
 
-## Available Tools
+## Tool Categories
 
-### 1. slack_send_message
-Send messages to Slack channels or direct messages.
+### Core Messaging Tools
+
+#### slack_send_message
+Send enhanced messages with Block Kit support, threading, and rich formatting.
+
+**Parameters:**
+- `channel` (string, required): Channel ID, name, or user ID for DM
+- `text` (string, required): Message text with Slack markdown support
+- `thread_ts` (string, optional): Parent message timestamp for threading
+- `blocks` (array, optional): Slack Block Kit blocks for rich formatting
+- `attachments` (array, optional): Legacy message attachments
+- `unfurl_links` (boolean, optional): Enable automatic link unfurling
+- `unfurl_media` (boolean, optional): Enable automatic media unfurling
+
+**Example:**
+```json
+{
+  "channel": "general",
+  "text": "Hello from Enhanced MCP!",
+  "blocks": [
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Project Update*\nDeployment completed successfully! 🚀"
+      }
+    }
+  ]
+}
+```
+
+#### slack_chat_update
+Update existing messages with enhanced formatting and validation.
+
+**Parameters:**
+- `channel` (string, required): Channel containing the message
+- `ts` (string, required): Timestamp of message to update
+- `text` (string, optional): New message text
+- `blocks` (array, optional): New Block Kit blocks
+- `attachments` (array, optional): New attachments
+
+#### slack_chat_delete
+Delete messages with proper permissions and logging.
+
+**Parameters:**
+- `channel` (string, required): Channel containing the message
+- `ts` (string, required): Timestamp of message to delete
+
+### Channel Management Tools
+
+#### slack_create_channel
+Create channels with templates and automation.
+
+**Parameters:**
+- `name` (string, required): Channel name (auto-sanitized)
+- `is_private` (boolean, optional): Create private channel
+- `template` (string, optional): Channel template (project, team, support, etc.)
+- `invite_users` (array, optional): Users to invite automatically
+- `send_welcome_message` (boolean, optional): Send welcome message
+
+#### slack_list_channels
+List and filter channels with advanced metadata.
+
+**Parameters:**
+- `types` (array, optional): Channel types to include
+- `exclude_archived` (boolean, optional): Exclude archived channels
+- `limit` (number, optional): Maximum channels to return
+- `cursor` (string, optional): Pagination cursor
+
+#### slack_join_channel
+Join channels with validation and error handling.
+
+**Parameters:**
+- `channel` (string, required): Channel ID or name to join
+
+#### slack_leave_channel
+Leave channels with proper cleanup.
+
+**Parameters:**
+- `channel` (string, required): Channel ID or name to leave
+
+#### slack_archive_channel
+Archive channels with backup and notification.
+
+**Parameters:**
+- `channel` (string, required): Channel ID or name to archive
+
+### Conversation & History Tools
+
+#### slack_get_channel_history
+Retrieve channel history with intelligent filtering.
 
 **Parameters:**
 - `channel` (string, required): Channel ID or name
-- `text` (string, required): Message text
-- `thread_ts` (string, optional): Thread timestamp for replies
-- `blocks` (array, optional): Slack Block Kit elements
-- `attachments` (array, optional): Message attachments
-- `unfurl_links` (boolean, optional): Unfurl links in message
-- `unfurl_media` (boolean, optional): Unfurl media in message
-
-### 2. slack_get_channel_history
-Retrieve message history from a Slack channel.
-
-**Parameters:**
-- `channel` (string, required): Channel ID or name
-- `limit` (number, optional): Number of messages to retrieve (default: 100)
-- `oldest` (string, optional): Start of time range
 - `latest` (string, optional): End of time range
-- `inclusive` (boolean, optional): Include messages with oldest and latest timestamps
+- `oldest` (string, optional): Start of time range
+- `inclusive` (boolean, optional): Include messages with latest and oldest timestamps
+- `limit` (number, optional): Number of messages to return
+- `cursor` (string, optional): Pagination cursor
 
-### 3. slack_create_channel
-Create a new Slack channel.
+#### slack_conversations_info
+Get detailed channel/conversation information.
 
 **Parameters:**
-- `name` (string, required): Channel name (lowercase, no spaces)
-- `is_private` (boolean, optional): Create private channel (default: false)
-- `topic` (string, optional): Channel topic
-- `purpose` (string, optional): Channel purpose
+- `channel` (string, required): Channel ID
+- `include_locale` (boolean, optional): Include locale information
+- `include_num_members` (boolean, optional): Include member count
 
-### 4. slack_get_user_info
-Get detailed information about a Slack user.
+#### slack_conversations_history
+Advanced conversation history with pagination.
+
+**Parameters:**
+- `channel` (string, required): Channel ID
+- `cursor` (string, optional): Pagination cursor
+- `inclusive` (boolean, optional): Include boundary messages
+- `latest` (string, optional): End of time range
+- `limit` (number, optional): Number of messages to return
+- `oldest` (string, optional): Start of time range
+
+#### slack_conversations_members
+List conversation members with roles.
+
+**Parameters:**
+- `channel` (string, required): Channel ID
+- `cursor` (string, optional): Pagination cursor
+- `limit` (number, optional): Number of members to return
+
+#### slack_conversations_replies
+Get thread replies with context.
+
+**Parameters:**
+- `channel` (string, required): Channel ID
+- `ts` (string, required): Parent message timestamp
+- `cursor` (string, optional): Pagination cursor
+- `inclusive` (boolean, optional): Include boundary messages
+- `latest` (string, optional): End of time range
+- `limit` (number, optional): Number of replies to return
+- `oldest` (string, optional): Start of time range
+
+#### slack_conversations_mark
+Mark conversations as read with timestamps.
+
+**Parameters:**
+- `channel` (string, required): Channel ID
+- `ts` (string, required): Timestamp to mark as read
+
+### User Management Tools
+
+#### slack_get_user_info
+Get enhanced user profiles with analytics.
 
 **Parameters:**
 - `user` (string, required): User ID or username
-- `include_locale` (boolean, optional): Include user locale information
+- `include_locale` (boolean, optional): Include locale information
 
-### 5. slack_upload_file
-Upload a file to Slack channels.
+#### slack_users_info
+Get detailed user information with presence.
 
 **Parameters:**
-- `channels` (array, required): List of channel IDs or names
-- `file_path` (string, required): Path to file to upload
-- `filename` (string, optional): Custom filename
-- `title` (string, optional): File title
-- `initial_comment` (string, optional): Initial comment
-- `thread_ts` (string, optional): Thread timestamp for replies
+- `user` (string, required): User ID
+- `include_locale` (boolean, optional): Include locale information
 
-### 6. slack_search_messages
-Search for messages across the workspace.
+#### slack_users_list
+List users with filtering and pagination.
+
+**Parameters:**
+- `cursor` (string, optional): Pagination cursor
+- `include_locale` (boolean, optional): Include locale information
+- `limit` (number, optional): Number of users to return
+- `team_id` (string, optional): Team ID to list users from
+
+#### slack_list_users
+Alternative user listing with enhanced metadata.
+
+**Parameters:**
+- `presence` (boolean, optional): Include presence information
+- `limit` (number, optional): Maximum users to return
+
+#### slack_users_lookup_by_email
+Find users by email address.
+
+**Parameters:**
+- `email` (string, required): Email address to lookup
+
+### Reactions & Interactions
+
+#### slack_reactions_add
+Add reactions with emoji validation.
+
+**Parameters:**
+- `channel` (string, required): Channel containing the message
+- `name` (string, required): Emoji name (without colons)
+- `timestamp` (string, required): Message timestamp
+
+#### slack_reactions_remove
+Remove reactions with proper permissions.
+
+**Parameters:**
+- `channel` (string, required): Channel containing the message
+- `name` (string, required): Emoji name (without colons)
+- `timestamp` (string, required): Message timestamp
+
+#### slack_reactions_get
+Get reaction details and analytics.
+
+**Parameters:**
+- `channel` (string, optional): Channel containing the message
+- `file` (string, optional): File to get reactions for
+- `file_comment` (string, optional): File comment to get reactions for
+- `full` (boolean, optional): Return full reaction details
+- `timestamp` (string, optional): Message timestamp
+
+### Pins & Bookmarks
+
+#### slack_pins_add
+Pin messages with context and notifications.
+
+**Parameters:**
+- `channel` (string, required): Channel ID
+- `timestamp` (string, required): Message timestamp to pin
+
+#### slack_pins_remove
+Unpin messages with proper validation.
+
+**Parameters:**
+- `channel` (string, required): Channel ID
+- `timestamp` (string, required): Message timestamp to unpin
+
+#### slack_pins_list
+List pinned items with metadata.
+
+**Parameters:**
+- `channel` (string, required): Channel ID
+
+#### slack_bookmarks_list
+List channel bookmarks and shortcuts.
+
+**Parameters:**
+- `channel_id` (string, required): Channel ID
+
+### Search & Discovery
+
+#### slack_search_messages
+AI-powered search with advanced filtering.
 
 **Parameters:**
 - `query` (string, required): Search query
-- `sort` (string, optional): Sort by 'score' or 'timestamp' (default: 'score')
-- `sort_dir` (string, optional): Sort direction 'asc' or 'desc' (default: 'desc')
-- `highlight` (boolean, optional): Highlight search terms
 - `count` (number, optional): Number of results to return
+- `highlight` (boolean, optional): Highlight search terms
 - `page` (number, optional): Page number for pagination
+- `sort` (string, optional): Sort order (score, timestamp)
+- `sort_dir` (string, optional): Sort direction (asc, desc)
 
-### 7. slack_set_status
-Set the current user's Slack status.
+### File Management
+
+#### slack_upload_file
+Advanced file upload with multi-channel support.
 
 **Parameters:**
-- `status_text` (string, required): Status text
+- `channels` (array, optional): Channels to upload to
+- `content` (string, optional): File content as string
+- `file` (string, optional): File path to upload
+- `filename` (string, optional): Filename for the upload
+- `filetype` (string, optional): File type
+- `initial_comment` (string, optional): Initial comment
+- `thread_ts` (string, optional): Thread timestamp
+- `title` (string, optional): File title
+
+### Status & Presence
+
+#### slack_set_status
+Intelligent status management with templates.
+
+**Parameters:**
+- `status_text` (string, optional): Status text
 - `status_emoji` (string, optional): Status emoji
-- `status_expiration` (number, optional): Status expiration timestamp
+- `status_expiration` (number, optional): Expiration timestamp
 
-### 8. slack_get_workspace_info
-Get information about the Slack workspace.
+### Workspace & Analytics
 
-**Parameters:**
-- `include_icon` (boolean, optional): Include workspace icon information
-
-### 9. slack_list_channels
-List all channels in the workspace with advanced filtering and analytics.
+#### slack_get_workspace_info
+Comprehensive workspace analytics.
 
 **Parameters:**
-- `types` (string, optional): Comma-separated channel types (default: 'public_channel,private_channel')
-- `exclude_archived` (boolean, optional): Exclude archived channels (default: true)
-- `limit` (number, optional): Maximum channels to return (1-1000, default: 100)
-- `cursor` (string, optional): Pagination cursor
-- `include_member_count` (boolean, optional): Include member counts (default: true)
-- `include_purpose_topic` (boolean, optional): Include purpose/topic details (default: true)
-- `sort_by` (string, optional): Sort by 'name', 'created', 'member_count', 'last_activity' (default: 'name')
-- `sort_direction` (string, optional): Sort direction 'asc' or 'desc' (default: 'asc')
-- `name_filter` (string, optional): Filter channels by name
-- `include_analytics` (boolean, optional): Include channel analytics (default: false)
+- `domain` (string, optional): Workspace domain
 
-**Response includes:**
-- Channel list with enhanced metadata
-- Summary statistics (total channels, by type, by status, member stats, content stats)
-- Pagination information
-- Execution metadata
+#### slack_auth_test
+Authentication testing and validation.
 
-### 10. slack_list_users (NEW)
-List all users in the workspace with advanced filtering, analytics, and presence tracking.
+**Parameters:** None
+
+### Advanced Features
+
+#### slack_views_publish
+Publish App Home views and modals.
 
 **Parameters:**
-- `limit` (number, optional): Maximum users to return (1-1000, default: 100)
-- `cursor` (string, optional): Pagination cursor
-- `include_locale` (boolean, optional): Include user locale information (default: false)
-- `include_presence` (boolean, optional): Include presence status (default: true)
-- `include_profile_analytics` (boolean, optional): Include profile completeness analytics (default: true)
-- `filter_by_status` (string, optional): Filter by presence status: 'active', 'away', 'dnd', 'all' (default: 'all')
-- `filter_by_role` (string, optional): Filter by role: 'admin', 'owner', 'member', 'guest', 'restricted', 'ultra_restricted', 'all' (default: 'all')
-- `filter_by_account_type` (string, optional): Filter by account type: 'regular', 'bot', 'app', 'workflow_bot', 'all' (default: 'all')
-- `include_deleted` (boolean, optional): Include deleted users (default: false)
-- `include_bots` (boolean, optional): Include bot users (default: true)
-- `sort_by` (string, optional): Sort by 'name', 'real_name', 'display_name', 'status', 'last_activity', 'profile_score' (default: 'name')
-- `sort_direction` (string, optional): Sort direction 'asc' or 'desc' (default: 'asc')
-- `name_filter` (string, optional): Filter users by name (partial match)
-- `timezone_filter` (string, optional): Filter by timezone (e.g., 'America/New_York')
-- `department_filter` (string, optional): Filter by department/title
-- `include_activity_analytics` (boolean, optional): Include activity analytics (default: false)
+- `user_id` (string, required): User ID to publish view for
+- `view` (object, required): View payload
 
-**Response includes:**
-- User list with enhanced metadata and analysis
-- Presence information (when requested)
-- Profile analytics including completeness scores
-- Activity analytics (when requested)
-- Summary statistics (total users, by type, by role, by status, profile stats, activity stats)
-- Pagination information
-- Execution metadata
+#### slack_events_tail
+Real-time event monitoring and logging.
 
-**Enhanced Features:**
-- **Advanced Filtering**: Filter by presence status, role, account type, timezone, department
-- **Profile Analytics**: Completeness scoring, custom avatar detection, contact info analysis
-- **Presence Tracking**: Real-time presence status, connection counts, last activity
-- **Activity Analytics**: Activity level estimation, engagement metrics
-- **Smart Sorting**: Sort by profile completeness, activity level, or standard fields
-- **Comprehensive Statistics**: Detailed breakdowns by type, role, status, and engagement
+**Parameters:**
+- `pretty` (boolean, optional): Pretty print events
+- `token` (string, optional): Authentication token
 
-## Usage Examples
+## Response Format
 
-### List Active Users with Analytics
-```javascript
-const result = await slackListUsersTool.execute({
-  filter_by_status: 'active',
-  include_profile_analytics: true,
-  include_activity_analytics: true,
-  sort_by: 'profile_score',
-  sort_direction: 'desc'
-});
-```
+All tools return a standardized response format:
 
-### Find Users by Department
-```javascript
-const result = await slackListUsersTool.execute({
-  department_filter: 'engineering',
-  filter_by_account_type: 'regular',
-  sort_by: 'real_name'
-});
-```
-
-### Get Workspace Overview
-```javascript
-const result = await slackListUsersTool.execute({
-  include_profile_analytics: true,
-  include_presence: true,
-  limit: 1000
-});
-// Check result.summary for comprehensive statistics
+```json
+{
+  "success": true,
+  "data": {
+    // Tool-specific response data
+  },
+  "metadata": {
+    "execution_time_ms": 150,
+    "timestamp": "2024-01-01T00:00:00.000Z",
+    "tool": "slack_send_message"
+  }
+}
 ```
 
 ## Error Handling
 
-All tools return a consistent response format:
+Errors are returned in a consistent format:
 
-**Success Response:**
-```json
-{
-  "success": true,
-  "data": { ... },
-  "metadata": { ... }
-}
-```
-
-**Error Response:**
 ```json
 {
   "success": false,
   "error": "Error message",
-  "details": { ... }
+  "error_code": "SLACK_API_ERROR",
+  "metadata": {
+    "execution_time_ms": 50,
+    "timestamp": "2024-01-01T00:00:00.000Z",
+    "tool": "slack_send_message"
+  }
 }
 ```
 
 ## Rate Limiting
 
-The SDK implements intelligent rate limiting and retry mechanisms to handle Slack API limits gracefully. All tools will automatically retry failed requests with exponential backoff.
+The SDK includes built-in rate limiting and retry logic:
+- Automatic retry with exponential backoff
+- Respect for Slack API rate limits
+- Configurable timeout and retry settings
+- Request queuing for high-volume usage
 
 ## Authentication
 
-Ensure your Slack bot token has the necessary scopes for the tools you plan to use:
+All tools use the configured Slack bot token from environment variables:
+- `SLACK_BOT_TOKEN`: Primary bot token for API calls
+- `SLACK_USER_TOKEN`: Optional user token for user-specific operations
+- `SLACK_APP_TOKEN`: Optional app token for Socket Mode
 
-- `channels:read` - For channel operations
-- `users:read` - For user operations  
-- `users:read.email` - For user email information
-- `chat:write` - For sending messages
-- `files:write` - For file uploads
-- `search:read` - For message search
-- `users:write` - For status updates
+## Validation
 
+Input validation is performed using Zod schemas:
+- Type checking for all parameters
+- Required field validation
+- Format validation for IDs and timestamps
+- Custom validation rules for Slack-specific formats

@@ -6,71 +6,70 @@ A production-ready, comprehensive Slack integration SDK built on the Model Conte
 ## 🚀 Features
 
 ### Core Capabilities
-- **8 Enhanced Tools** with intelligent automation and context awareness
+- **33 Enhanced Tools** with intelligent automation and context awareness
 - **Production-Ready Architecture** with TypeScript, Zod validation, and comprehensive error handling
 - **MCP Protocol Integration** for seamless AI agent communication
 - **Extensible Tool Registry** for easy addition of new tools
-- **Real-time Testing** with Jest and Slack API integration
+- **Comprehensive Testing Suite** with Jest, unit, integration, e2e, performance, and security tests
 - **Docker Support** with health checks and multi-stage builds
-- **AWS Q CLI Integration** for cloud deployment
+- **Advanced Analytics & AI Integration** with built-in analytics and AI-powered features
 
-### Enhanced Tools
+### Complete Tool Suite (33 Tools)
 
-#### 1. **slack_send_message** - Advanced Messaging
-- Rich formatting with Slack Block Kit support
-- Thread management and reply broadcasting
-- Automatic link and media unfurling
-- Message scheduling and templates
-- Comprehensive delivery tracking
+#### **Core Messaging Tools**
+1. **slack_send_message** - Advanced messaging with Block Kit, threading, and rich formatting
+2. **slack_chat_update** - Update existing messages with enhanced formatting
+3. **slack_chat_delete** - Delete messages with proper permissions and logging
 
-#### 2. **slack_get_channel_history** - Intelligent History Retrieval
-- Smart filtering by users, bots, and content types
-- Automatic user resolution and metadata enrichment
-- Pagination with cursor support
-- Message analysis and sentiment detection
-- Context-aware result formatting
+#### **Channel Management Tools**
+4. **slack_create_channel** - Smart channel creation with templates and automation
+5. **slack_list_channels** - List and filter channels with advanced metadata
+6. **slack_join_channel** - Join channels with validation and error handling
+7. **slack_leave_channel** - Leave channels with proper cleanup
+8. **slack_archive_channel** - Archive channels with backup and notification
 
-#### 3. **slack_create_channel** - Smart Channel Creation
-- Intelligent name sanitization and validation
-- Pre-built templates (project, team, support, social, etc.)
-- Automatic user invitation and welcome messages
-- Topic and purpose management
-- Post-creation setup automation
+#### **Conversation & History Tools**
+9. **slack_get_channel_history** - Intelligent history retrieval with filtering
+10. **slack_conversations_info** - Get detailed channel/conversation information
+11. **slack_conversations_history** - Advanced conversation history with pagination
+12. **slack_conversations_members** - List conversation members with roles
+13. **slack_conversations_replies** - Get thread replies with context
+14. **slack_conversations_mark** - Mark conversations as read with timestamps
 
-#### 4. **slack_get_user_info** - Enhanced User Profiles
-- Comprehensive profile analysis and completion scoring
-- Presence and activity tracking
-- Social media link extraction
-- Custom field parsing
-- Team and workspace context
+#### **User Management Tools**
+15. **slack_get_user_info** - Enhanced user profiles with analytics
+16. **slack_users_info** - Detailed user information with presence
+17. **slack_users_list** - List users with filtering and pagination
+18. **slack_list_users** - Alternative user listing with enhanced metadata
+19. **slack_users_lookup_by_email** - Find users by email address
 
-#### 5. **slack_upload_file** - Advanced File Management
-- Multi-channel upload support
-- Automatic file type detection and analysis
-- Image metadata extraction
-- Preview generation for supported formats
-- File size optimization and validation
+#### **Reactions & Interactions**
+20. **slack_reactions_add** - Add reactions with emoji validation
+21. **slack_reactions_remove** - Remove reactions with proper permissions
+22. **slack_reactions_get** - Get reaction details and analytics
 
-#### 6. **slack_search_messages** - AI-Powered Search
-- Advanced query building with filters
-- Context-aware result ranking
-- Sentiment analysis and content categorization
-- Search analytics and insights
-- Result distribution analysis
+#### **Pins & Bookmarks**
+23. **slack_pins_add** - Pin messages with context and notifications
+24. **slack_pins_remove** - Unpin messages with proper validation
+25. **slack_pins_list** - List pinned items with metadata
+26. **slack_bookmarks_list** - List channel bookmarks and shortcuts
 
-#### 7. **slack_set_status** - Intelligent Status Management
-- Pre-built status templates with smart duration
-- Automatic expiration and presence management
-- Do Not Disturb integration
-- Status history and analytics
-- Template customization
+#### **Search & Discovery**
+27. **slack_search_messages** - AI-powered search with advanced filtering
 
-#### 8. **slack_get_workspace_info** - Comprehensive Analytics
-- Workspace health insights and recommendations
-- Channel and user statistics
-- Activity pattern analysis
-- Integration and billing information
-- Performance metrics and trends
+#### **File Management**
+28. **slack_upload_file** - Advanced file upload with multi-channel support
+
+#### **Status & Presence**
+29. **slack_set_status** - Intelligent status management with templates
+
+#### **Workspace & Analytics**
+30. **slack_get_workspace_info** - Comprehensive workspace analytics
+31. **slack_auth_test** - Authentication testing and validation
+
+#### **Advanced Features**
+32. **slack_views_publish** - Publish App Home views and modals
+33. **slack_events_tail** - Real-time event monitoring and logging
 
 ## 📦 Installation
 
@@ -113,8 +112,8 @@ npm start
 # Build Docker image
 npm run docker:build
 
-# Run with Docker Compose
-docker-compose up -d
+# Run with Docker Compose (includes Redis)
+docker-compose -f docker/docker-compose.yml up -d
 
 # Check health
 curl http://localhost:3000/health
@@ -132,6 +131,7 @@ SLACK_BOT_TOKEN=xoxb-your-bot-token
 SLACK_SIGNING_SECRET=your-signing-secret
 
 # Optional Slack Configuration
+SLACK_USER_TOKEN=xoxp-your-user-token
 SLACK_APP_TOKEN=xapp-your-app-token
 SLACK_CLIENT_ID=your-client-id
 SLACK_CLIENT_SECRET=your-client-secret
@@ -139,7 +139,7 @@ SLACK_CLIENT_SECRET=your-client-secret
 # Application Configuration
 NODE_ENV=development
 HTTP_PORT=3000
-SLACK_SOCKET_MODE=true
+SLACK_SOCKET_MODE=false
 SLACK_LOG_LEVEL=INFO
 SLACK_API_TIMEOUT_MS=30000
 SLACK_API_MAX_RETRIES=3
@@ -177,12 +177,17 @@ AWS_PROFILE=default
    - mpim:history
    - mpim:read
    - mpim:write
+   - pins:read
+   - pins:write
+   - reactions:read
+   - reactions:write
    - search:read
    - users:read
    - users:read.email
    - users.profile:read
    - users.profile:write
    - team:read
+   - bookmarks:read
    ```
 
 3. **Install App** to your workspace
@@ -284,14 +289,49 @@ const result = await slackSearchMessagesTool.execute({
 # Run all tests
 npm test
 
+# Run specific test suites
+npm run test:unit          # Unit tests only
+npm run test:integration   # Integration tests only
+npm run test:e2e          # End-to-end tests only
+npm run test:performance  # Performance tests only
+npm run test:security     # Security tests only
+
 # Run tests with coverage
 npm run test:coverage
 
 # Run tests in watch mode
 npm run test:watch
 
-# Run only unit tests (skip integration)
-SKIP_INTEGRATION_TESTS=true npm test
+# Run tests in CI mode
+npm run test:ci
+
+# Debug tests
+npm run test:debug
+```
+
+### Test Structure
+
+```
+tests/
+├── config/
+│   └── jest.config.ts     # Jest configuration
+├── unit/                  # Unit tests
+│   ├── tools/            # Tool-specific tests
+│   ├── utils/            # Utility tests
+│   └── registry/         # Registry tests
+├── integration/          # Integration tests
+│   ├── slack-api/        # Slack API integration tests
+│   └── mcp-protocol/     # MCP protocol tests
+├── e2e/                  # End-to-end tests
+│   └── workflows/        # Complete workflow tests
+├── performance/          # Performance tests
+│   └── benchmarks/       # Performance benchmarks
+├── security/             # Security tests
+│   └── vulnerabilities/  # Security vulnerability tests
+├── fixtures/             # Test data and fixtures
+├── mocks/                # Mock implementations
+├── helpers/              # Test helper functions
+└── reports/              # Test reports and coverage
 ```
 
 ### Integration Testing
@@ -300,23 +340,6 @@ Integration tests require real Slack credentials and will make actual API calls 
 
 ```env
 TEST_SLACK_CHANNEL=test-channel
-```
-
-### Test Structure
-
-```
-__tests__/
-├── setup.ts              # Jest configuration
-├── globalSetup.ts         # Global test setup
-├── globalTeardown.ts      # Global test cleanup
-├── tools/                 # Tool-specific tests
-│   ├── slackSendMessage.test.ts
-│   └── ...
-├── utils/                 # Utility tests
-│   ├── slackClient.test.ts
-│   └── ...
-└── registry/              # Registry tests
-    └── toolRegistry.test.ts
 ```
 
 ## 🏗️ Architecture
@@ -328,15 +351,20 @@ enhanced-mcp-slack-sdk/
 ├── src/
 │   ├── index.ts           # MCP server entry point
 │   ├── config/
-│   │   └── env.ts         # Environment configuration
+│   │   └── env.ts         # Environment configuration with Zod validation
 │   ├── utils/
 │   │   ├── slackClient.ts # Enhanced Slack client
-│   │   ├── error.ts       # Error handling
+│   │   ├── error.ts       # Error handling utilities
 │   │   ├── logger.ts      # Structured logging
-│   │   └── validator.ts   # Zod validation utilities
+│   │   ├── validator.ts   # Zod validation utilities
+│   │   ├── performance.ts # Performance monitoring
+│   │   ├── aiAnalytics.ts # AI-powered analytics
+│   │   ├── advancedAnalytics.ts # Advanced analytics
+│   │   ├── missingFunctions.ts # Missing function implementations
+│   │   └── globalStubs.ts # Global function stubs
 │   ├── registry/
 │   │   └── toolRegistry.ts # Tool management system
-│   ├── tools/             # Enhanced tool implementations
+│   ├── tools/             # Enhanced tool implementations (33 tools)
 │   │   ├── slackSendMessage.ts
 │   │   ├── slackGetChannelHistory.ts
 │   │   ├── slackCreateChannel.ts
@@ -344,19 +372,56 @@ enhanced-mcp-slack-sdk/
 │   │   ├── slackUploadFile.ts
 │   │   ├── slackSearchMessages.ts
 │   │   ├── slackSetStatus.ts
-│   │   └── slackGetWorkspaceInfo.ts
+│   │   ├── slackGetWorkspaceInfo.ts
+│   │   ├── slackListChannels.ts
+│   │   ├── slackListUsers.ts
+│   │   ├── slackJoinChannel.ts
+│   │   ├── slackLeaveChannel.ts
+│   │   ├── slackArchiveChannel.ts
+│   │   ├── slackConversationsInfo.ts
+│   │   ├── slackConversationsMembers.ts
+│   │   ├── slackConversationsHistory.ts
+│   │   ├── slackConversationsReplies.ts
+│   │   ├── slackConversationsMark.ts
+│   │   ├── slackChatUpdate.ts
+│   │   ├── slackChatDelete.ts
+│   │   ├── slackReactionsAdd.ts
+│   │   ├── slackReactionsRemove.ts
+│   │   ├── slackReactionsGet.ts
+│   │   ├── slackAuthTest.ts
+│   │   ├── slackPinsAdd.ts
+│   │   ├── slackPinsRemove.ts
+│   │   ├── slackPinsList.ts
+│   │   ├── slackBookmarksList.ts
+│   │   ├── slackUsersInfo.ts
+│   │   ├── slackUsersList.ts
+│   │   ├── slackUsersLookupByEmail.ts
+│   │   ├── slackViewsPublish.ts
+│   │   └── slackEventsTail.ts
 │   ├── types/
 │   │   └── index.ts       # TypeScript definitions
 │   └── healthcheck.ts     # Docker health check
-├── __tests__/             # Test suites
-├── dist/                  # Compiled JavaScript
-├── coverage/              # Test coverage reports
-├── docs/                  # Additional documentation
+├── tests/                 # Comprehensive test suites
+│   ├── config/           # Test configuration
+│   ├── unit/             # Unit tests
+│   ├── integration/      # Integration tests
+│   ├── e2e/              # End-to-end tests
+│   ├── performance/      # Performance tests
+│   ├── security/         # Security tests
+│   ├── fixtures/         # Test data
+│   ├── mocks/            # Mock implementations
+│   ├── helpers/          # Test helpers
+│   └── reports/          # Test reports
+├── dist/                 # Compiled JavaScript
+├── coverage/             # Test coverage reports
+├── docs/                 # Additional documentation
+├── docker/               # Docker configuration
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── scripts/              # Build and utility scripts
 ├── package.json
 ├── tsconfig.json
 ├── jest.config.js
-├── Dockerfile
-├── docker-compose.yml
 └── README.md
 ```
 
@@ -389,19 +454,6 @@ enhanced-mcp-slack-sdk/
 
 ## 🚀 Deployment
 
-### AWS Q CLI Integration
-
-The project includes AWS Q CLI configuration for cloud deployment:
-
-```bash
-# Configure AWS Q CLI
-aws configure set region us-east-1
-aws configure set profile enhanced-mcp-slack
-
-# Deploy using AWS Q CLI
-q deploy --environment production
-```
-
 ### Docker Production Deployment
 
 ```yaml
@@ -421,6 +473,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
 ```
 
 ### Kubernetes Deployment
