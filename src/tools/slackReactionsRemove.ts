@@ -1,23 +1,73 @@
+import { MCPTool } from '../registry/toolRegistry';
+import { slackClient } from '../utils/slackClient';
+import { Validator } from '../utils/validator';
+import { ErrorHandler } from '../utils/error';
+import { logger } from '../utils/logger';
+import { z } from 'zod';
 
-import { MCPTool } from '@/registry/toolRegistry';
-import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
-import { ErrorHandler } from '@/utils/error';
-import { logger } from '@/utils/logger';
+const inputSchema = z.object({
+  channel: z.string().min(1, 'Channel is required'),
+  timestamp: z.string().min(1, 'Message timestamp is required'),
+  name: z.string().min(1, 'Reaction name is required'),
+  analyze_impact: z.boolean().optional().default(true),
+  include_analytics: z.boolean().optional().default(true),
+  notify_users: z.boolean().optional().default(false),
+  reason: z.string().optional(),
+});
 
-/**
- * Enhanced Slack Reactions Remove Tool
- * Remove reactions with activity tracking and analytics
- */
+type InputArgs = z.infer<typeof inputSchema>;
+
+interface ReactionRemovalResult {
+  success: boolean;
+  channel: string;
+  timestamp: string;
+  reaction_name: string;
+  removal_impact?: {
+    previous_reaction_count: number;
+    remaining_reactions: number;
+    sentiment_change: string;
+    user_engagement_impact: string;
+    message_popularity_change: string;
+  };
+  analytics?: {
+    reaction_patterns: {
+      most_common_reactions: string[];
+      reaction_diversity_score: number;
+      engagement_level: string;
+    };
+    user_behavior: {
+      reaction_frequency: string;
+      engagement_consistency: string;
+      social_influence_score: number;
+    };
+    message_context: {
+      message_age_hours: number;
+      thread_activity: string;
+      channel_engagement: string;
+    };
+  };
+  recommendations?: {
+    alternative_reactions: string[];
+    engagement_tips: string[];
+    best_practices: string[];
+  };
+  metadata: {
+    execution_time_ms: number;
+    api_calls_made: number;
+    removal_timestamp: string;
+    reason?: string;
+  };
+}
+
 export const slackReactionsRemoveTool: MCPTool = {
   name: 'slack_reactions_remove',
-  description: 'Remove reactions from messages with activity tracking, engagement analytics, and reaction intelligence',
+  description: 'Remove reactions from Slack messages with comprehensive impact analysis and engagement insights',
   inputSchema: {
     type: 'object',
     properties: {
       channel: {
         type: 'string',
-        description: 'Channel ID or name containing the message',
+        description: 'Channel ID or name where the message is located',
       },
       timestamp: {
         type: 'string',
@@ -25,124 +75,146 @@ export const slackReactionsRemoveTool: MCPTool = {
       },
       name: {
         type: 'string',
-        description: 'Emoji name (without colons)',
+        description: 'Name of the reaction to remove (without colons, e.g., "thumbsup")',
       },
-      analytics: {
+      analyze_impact: {
         type: 'boolean',
-        description: 'Include reaction removal analytics',
+        description: 'Whether to analyze the impact of removing this reaction',
         default: true,
+      },
+      include_analytics: {
+        type: 'boolean',
+        description: 'Whether to include detailed reaction analytics',
+        default: true,
+      },
+      notify_users: {
+        type: 'boolean',
+        description: 'Whether to notify relevant users about the reaction removal',
+        default: false,
+      },
+      reason: {
+        type: 'string',
+        description: 'Optional reason for removing the reaction',
       },
     },
     required: ['channel', 'timestamp', 'name'],
   },
 
-  async execute(args: Record<string, any>) {
+  async execute(args: Record<string, any>): Promise<ReactionRemovalResult> {
     const startTime = Date.now();
-    
+    let apiCallCount = 0;
+
     try {
-      const validatedArgs = {
-        channel: args.channel,
-        timestamp: args.timestamp,
-        name: args.name,
-        analytics: args.analytics !== false,
-      };
-
+      const validatedArgs = Validator.validate(inputSchema, args) as InputArgs;
+      
+      // Resolve channel ID if needed
       const channelId = await slackClient.resolveChannelId(validatedArgs.channel);
+      apiCallCount++;
 
-      // Get message and reaction details before removal
-      let messageDetails = null;
-      let reactionDetails = null;
-      if (validatedArgs.analytics) {
+      let preRemovalAnalysis: any = null;
+      let messageInfo: any = null;
+
+      // Get message info and current reactions for impact analysis
+      if (validatedArgs.analyze_impact || validatedArgs.include_analytics) {
         try {
-          const history = await slackClient.getClient().conversations.history({
+          // Get message details
+          const historyResponse = await (slackClient as any).client.conversations.history({
             channel: channelId,
             latest: validatedArgs.timestamp,
             limit: 1,
             inclusive: true,
           });
-          messageDetails = history.messages?.[0];
-          reactionDetails = messageDetails?.reactions?.find((r: any) => r.name === validatedArgs.name);
-        } catch (error) {
-          // Continue without details
+          apiCallCount++;
+
+          if (historyResponse.messages && historyResponse.messages.length > 0) {
+            messageInfo = historyResponse.messages[0];
+            preRemovalAnalysis = analyzeCurrentReactions(messageInfo);
+          }
+        } catch (error: any) {
+          logger.warn('Could not fetch message for analysis', { error: error.message });
         }
       }
 
-      // Remove reaction
-      const result = await slackClient.getClient().reactions.remove({
+      // Remove the reaction
+      const removeResponse = await (slackClient as any).client.reactions.remove({
         channel: channelId,
         timestamp: validatedArgs.timestamp,
         name: validatedArgs.name,
       });
+      apiCallCount++;
 
-      let analytics = {};
-      let recommendations = [];
-
-      if (validatedArgs.analytics) {
-        analytics = {
-          removal_intelligence: {
-            emoji_removed: validatedArgs.name,
-            emoji_category: categorizeEmoji(validatedArgs.name),
-            removal_timing: analyzeRemovalTiming(validatedArgs.timestamp),
-            removal_impact: assessRemovalImpact(reactionDetails, messageDetails),
-            sentiment_change: analyzeSentimentChange(validatedArgs.name, messageDetails),
-          },
-          reaction_context: reactionDetails ? {
-            reaction_count: reactionDetails.count,
-            had_multiple_users: reactionDetails.count > 1,
-            reaction_age: calculateReactionAge(messageDetails, validatedArgs.timestamp),
-            was_popular_reaction: wasPopularReaction(reactionDetails, messageDetails),
-          } : {},
-          engagement_impact: {
-            engagement_reduction: calculateEngagementReduction(reactionDetails, messageDetails),
-            social_signal_loss: calculateSocialSignalLoss(validatedArgs.name, reactionDetails),
-            communication_effect: assessCommunicationEffect(validatedArgs.name, messageDetails),
-          },
-          behavioral_analysis: {
-            removal_reason: inferRemovalReason(validatedArgs.name, reactionDetails, messageDetails),
-            correction_indicator: isLikelyCorrection(validatedArgs.name, messageDetails),
-            engagement_pattern: analyzeEngagementPattern(messageDetails),
-          },
-          performance_metrics: {
-            response_time_ms: Date.now() - startTime,
-            api_calls_made: validatedArgs.analytics ? 2 : 1,
-            data_freshness: 'real-time',
-          },
-        };
-
-        recommendations = generateRemovalRecommendations(analytics, messageDetails, validatedArgs.name);
+      if (!removeResponse.ok) {
+        throw new Error(`Failed to remove reaction: ${removeResponse.error}`);
       }
 
-      const duration = Date.now() - startTime;
-      logger.logToolExecution('slack_reactions_remove', args, duration);
+      // Get updated message info for post-removal analysis
+      let postRemovalAnalysis: any = null;
+      if (validatedArgs.analyze_impact && messageInfo) {
+        try {
+          const updatedHistoryResponse = await (slackClient as any).client.conversations.history({
+            channel: channelId,
+            latest: validatedArgs.timestamp,
+            limit: 1,
+            inclusive: true,
+          });
+          apiCallCount++;
 
-      return {
-        success: result.ok,
-        removal: {
-          emoji: validatedArgs.name,
-          channel_id: channelId,
-          message_ts: validatedArgs.timestamp,
-          removed_at: new Date().toISOString(),
-        },
-        enhancements: validatedArgs.analytics ? {
-          analytics,
-          recommendations,
-          intelligence_categories: [
-            'Removal Intelligence',
-            'Engagement Impact',
-            'Behavioral Analysis',
-            'Communication Effect'
-          ],
-          ai_insights: recommendations.length,
-          data_points: Object.keys(analytics).length * 4,
-        } : undefined,
+          if (updatedHistoryResponse.messages && updatedHistoryResponse.messages.length > 0) {
+            postRemovalAnalysis = analyzeCurrentReactions(updatedHistoryResponse.messages[0]);
+          }
+        } catch (error: any) {
+          logger.warn('Could not fetch updated message for analysis', { error: error.message });
+        }
+      }
+
+      // Build comprehensive result
+      const result: ReactionRemovalResult = {
+        success: true,
+        channel: channelId,
+        timestamp: validatedArgs.timestamp,
+        reaction_name: validatedArgs.name,
         metadata: {
-          channel_id: channelId,
-          message_ts: validatedArgs.timestamp,
-          execution_time_ms: duration,
-          enhancement_level: validatedArgs.analytics ? '350%' : '100%',
-          api_version: 'enhanced_v2.0.0',
+          execution_time_ms: Date.now() - startTime,
+          api_calls_made: apiCallCount,
+          removal_timestamp: new Date().toISOString(),
+          reason: validatedArgs.reason,
         },
       };
+
+      // Add impact analysis
+      if (validatedArgs.analyze_impact && preRemovalAnalysis && postRemovalAnalysis) {
+        result.removal_impact = generateImpactAnalysis(
+          preRemovalAnalysis,
+          postRemovalAnalysis,
+          validatedArgs.name
+        );
+      }
+
+      // Add detailed analytics
+      if (validatedArgs.include_analytics && messageInfo) {
+        result.analytics = generateReactionAnalytics(messageInfo, channelId);
+        result.recommendations = generateRecommendations(
+          preRemovalAnalysis,
+          validatedArgs.name,
+          messageInfo
+        );
+      }
+
+      // Send notifications if requested
+      if (validatedArgs.notify_users && messageInfo) {
+        await sendRemovalNotifications(
+          channelId,
+          messageInfo,
+          validatedArgs.name,
+          validatedArgs.reason
+        );
+        apiCallCount++;
+      }
+
+      result.metadata.api_calls_made = apiCallCount;
+
+      logger.logToolExecution('slack_reactions_remove', validatedArgs, Date.now() - startTime);
+      return result;
 
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -153,270 +225,155 @@ export const slackReactionsRemoveTool: MCPTool = {
         tool: 'slack_reactions_remove',
         args,
         execution_time_ms: duration,
-      });
+        api_calls_made: apiCallCount,
+      }) as ReactionRemovalResult;
     }
-  },
-
-  categorizeEmoji(emoji: string): string {
-    // Reuse categorization logic from add tool
-    const categories = {
-      positive: ['thumbsup', '+1', 'heart', 'smile', 'grinning', 'clap', 'tada', 'star', 'fire', 'rocket'],
-      negative: ['thumbsdown', '-1', 'disappointed', 'confused', 'worried', 'cry', 'angry'],
-      neutral: ['eyes', 'thinking_face', 'point_up', 'raised_hand', 'wave'],
-      celebration: ['tada', 'party', 'confetti_ball', 'champagne', 'clap'],
-      agreement: ['thumbsup', '+1', 'white_check_mark', 'heavy_check_mark', 'ok_hand'],
-      question: ['question', 'thinking_face', 'confused', 'shrug'],
-    };
-
-    for (const [category, emojis] of Object.entries(categories)) {
-      if (emojis.includes(emoji)) return category;
-    }
-    return 'other';
-  },
-
-  analyzeRemovalTiming(messageTs: string): any {
-    const messageTime = parseFloat(messageTs) * 1000;
-    const now = Date.now();
-    const timeDiff = now - messageTime;
-    const minutes = timeDiff / (1000 * 60);
-
-    let timing = 'very_delayed';
-    if (minutes < 5) timing = 'immediate';
-    else if (minutes < 30) timing = 'quick';
-    else if (minutes < 120) timing = 'moderate';
-    else if (minutes < 1440) timing = 'delayed'; // 24 hours
-
-    return {
-      timing_category: timing,
-      minutes_after_message: Math.round(minutes),
-      removal_urgency: minutes < 30 ? 'urgent' : minutes < 120 ? 'moderate' : 'casual',
-    };
-  },
-
-  assessRemovalImpact(reaction: any, message: any): string {
-    if (!reaction || !message) return 'unknown';
-
-    let impactScore = 0;
-    
-    // Higher impact if it was the only reaction of this type
-    if (reaction.count === 1) impactScore += 3;
-    
-    // Higher impact if message has few total reactions
-    const totalReactions = message.reactions?.length || 0;
-    if (totalReactions <= 2) impactScore += 2;
-    
-    // Higher impact if it was a positive reaction
-    const emojiSentiment = getEmojiSentiment(reaction.name);
-    if (emojiSentiment > 6) impactScore += 2;
-    
-    if (impactScore > 5) return 'high';
-    if (impactScore > 2) return 'medium';
-    return 'low';
-  },
-
-  getEmojiSentiment(emoji: string): number {
-    const sentimentMap: { [key: string]: number } = {
-      'heart': 10, 'tada': 9, 'fire': 9, 'rocket': 9, 'star': 8, 'clap': 8,
-      'thumbsup': 7, '+1': 7, 'smile': 6, 'grinning': 6, 'ok_hand': 6,
-      'eyes': 5, 'thinking_face': 5, 'point_up': 5, 'raised_hand': 5, 'wave': 5,
-      'thumbsdown': 3, '-1': 3, 'disappointed': 2, 'confused': 3, 'worried': 2,
-      'cry': 1, 'angry': 0,
-    };
-    return sentimentMap[emoji] || 5;
-  },
-
-  analyzeSentimentChange(emoji: string, message: any): any {
-    const emojiSentiment = getEmojiSentiment(emoji);
-    const remainingReactions = message?.reactions?.filter((r: any) => r.name !== emoji) || [];
-    
-    const avgRemainingSentiment = remainingReactions.length > 0 ?
-      remainingReactions.reduce((sum: number, r: any) => sum + getEmojiSentiment(r.name), 0) / remainingReactions.length : 5;
-
-    return {
-      removed_sentiment_value: emojiSentiment,
-      remaining_avg_sentiment: Math.round(avgRemainingSentiment * 100) / 100,
-      sentiment_shift: emojiSentiment > avgRemainingSentiment ? 'more_negative' : 
-                      emojiSentiment < avgRemainingSentiment ? 'more_positive' : 'neutral',
-      overall_positivity_change: emojiSentiment > 6 ? 'decreased' : emojiSentiment < 4 ? 'increased' : 'minimal',
-    };
-  },
-
-  calculateReactionAge(message: any, messageTs: string): number {
-    // Estimate reaction age (simplified - would need reaction timestamp in real implementation)
-    const messageTime = parseFloat(messageTs) * 1000;
-    const now = Date.now();
-    return Math.round((now - messageTime) / (1000 * 60)); // minutes
-  },
-
-  wasPopularReaction(reaction: any, message: any): boolean {
-    if (!reaction || !message?.reactions) return false;
-    
-    const totalReactionCount = message.reactions.reduce((sum: number, r: any) => sum + r.count, 0);
-    const reactionPercentage = (reaction.count / totalReactionCount) * 100;
-    
-    return reactionPercentage > 30 || reaction.count > 3;
-  },
-
-  calculateEngagementReduction(reaction: any, message: any): any {
-    if (!reaction) return { reduction_level: 'none' };
-
-    const reactionCount = reaction.count;
-    const totalReactions = message?.reactions?.reduce((sum: number, r: any) => sum + r.count, 0) || 0;
-    const reductionPercentage = totalReactions > 0 ? (reactionCount / totalReactions) * 100 : 0;
-
-    return {
-      reactions_lost: reactionCount,
-      percentage_of_total: Math.round(reductionPercentage),
-      reduction_level: reductionPercentage > 50 ? 'major' : 
-                      reductionPercentage > 25 ? 'significant' : 
-                      reductionPercentage > 10 ? 'moderate' : 'minor',
-      engagement_momentum_impact: reactionCount > 2 ? 'negative' : 'minimal',
-    };
-  },
-
-  calculateSocialSignalLoss(emoji: string, reaction: any): any {
-    const sentimentValue = getEmojiSentiment(emoji);
-    const reactionCount = reaction?.count || 1;
-    
-    const signalStrength = sentimentValue * Math.log(reactionCount + 1);
-    
-    return {
-      signal_strength_lost: Math.round(signalStrength * 100) / 100,
-      social_impact: signalStrength > 15 ? 'high' : signalStrength > 8 ? 'medium' : 'low',
-      community_effect: sentimentValue > 6 && reactionCount > 1 ? 'reduces_positivity' : 'minimal',
-    };
-  },
-
-  assessCommunicationEffect(emoji: string, message: any): any {
-    const emojiCategory = categorizeEmoji(emoji);
-    const messageHasQuestion = message?.text?.includes('?') || false;
-    const messageIsAnnouncement = message?.text?.toLowerCase().includes('announce') || false;
-
-    let effect = 'neutral';
-    let reasoning = 'Standard reaction removal';
-
-    if (emojiCategory === 'agreement' && messageHasQuestion) {
-      effect = 'reduces_consensus';
-      reasoning = 'Removing agreement reaction from question reduces apparent consensus';
-    } else if (emojiCategory === 'celebration' && messageIsAnnouncement) {
-      effect = 'reduces_enthusiasm';
-      reasoning = 'Removing celebratory reaction from announcement reduces team enthusiasm';
-    } else if (emojiCategory === 'positive') {
-      effect = 'reduces_positivity';
-      reasoning = 'Removing positive reaction reduces overall message positivity';
-    }
-
-    return {
-      communication_effect: effect,
-      reasoning,
-      message_tone_impact: assessMessageToneImpact(emojiCategory, message),
-    };
-  },
-
-  assessMessageToneImpact(emojiCategory: string, message: any): string {
-    const remainingPositiveReactions = message?.reactions?.filter((r: any) => 
-      categorizeEmoji(r.name) === 'positive'
-    ).length || 0;
-
-    if (emojiCategory === 'positive' && remainingPositiveReactions === 0) {
-      return 'removes_all_positivity';
-    } else if (emojiCategory === 'positive') {
-      return 'reduces_positivity';
-    } else if (emojiCategory === 'negative') {
-      return 'improves_tone';
-    }
-    
-    return 'minimal_impact';
-  },
-
-  inferRemovalReason(emoji: string, reaction: any, message: any): string {
-    const emojiCategory = categorizeEmoji(emoji);
-    const reactionCount = reaction?.count || 1;
-    
-    if (emojiCategory === 'negative') return 'correcting_negative_reaction';
-    if (reactionCount === 1 && emojiCategory === 'question') return 'question_resolved';
-    if (emojiCategory === 'positive' && message?.text?.toLowerCase().includes('mistake')) return 'inappropriate_positivity';
-    if (reactionCount > 1) return 'personal_preference_change';
-    
-    return 'accidental_or_reconsideration';
-  },
-
-  isLikelyCorrection(emoji: string, message: any): boolean {
-    const emojiCategory = categorizeEmoji(emoji);
-    const messageText = message?.text?.toLowerCase() || '';
-    
-    // Likely correction scenarios
-    if (emojiCategory === 'positive' && (messageText.includes('error') || messageText.includes('problem'))) {
-      return true;
-    }
-    
-    if (emojiCategory === 'celebration' && messageText.includes('cancel')) {
-      return true;
-    }
-    
-    return false;
-  },
-
-  analyzeEngagementPattern(message: any): any {
-    const reactions = message?.reactions || [];
-    const totalReactions = reactions.reduce((sum: number, r: any) => sum + r.count, 0);
-    
-    return {
-      total_reactions: totalReactions,
-      reaction_diversity: reactions.length,
-      engagement_level: totalReactions > 10 ? 'high' : totalReactions > 3 ? 'medium' : 'low',
-      reaction_balance: calculateReactionBalance(reactions),
-    };
-  },
-
-  calculateReactionBalance(reactions: any[]): string {
-    const positiveCount = reactions.filter(r => getEmojiSentiment(r.name) > 6)
-      .reduce((sum, r) => sum + r.count, 0);
-    const negativeCount = reactions.filter(r => getEmojiSentiment(r.name) < 4)
-      .reduce((sum, r) => sum + r.count, 0);
-    const neutralCount = reactions.filter(r => {
-      const sentiment = getEmojiSentiment(r.name);
-      return sentiment >= 4 && sentiment <= 6;
-    }).reduce((sum, r) => sum + r.count, 0);
-
-    if (positiveCount > negativeCount * 2) return 'overwhelmingly_positive';
-    if (negativeCount > positiveCount * 2) return 'overwhelmingly_negative';
-    if (positiveCount > negativeCount) return 'mostly_positive';
-    if (negativeCount > positiveCount) return 'mostly_negative';
-    return 'balanced';
-  },
-
-  generateRemovalRecommendations(analytics: any, message: any, emoji: string): string[] {
-    const recommendations = [];
-
-    if (analytics.removal_intelligence?.removal_impact === 'high') {
-      recommendations.push('High-impact removal - this reaction had significant engagement value');
-    }
-
-    if (analytics.engagement_impact?.reduction_level === 'major') {
-      recommendations.push('Major engagement reduction - consider if this removal aligns with communication goals');
-    }
-
-    if (analytics.behavioral_analysis?.correction_indicator) {
-      recommendations.push('Appears to be a correction - good practice for maintaining appropriate reactions');
-    }
-
-    if (analytics.removal_intelligence?.sentiment_change?.overall_positivity_change === 'decreased') {
-      recommendations.push('Removal decreases overall message positivity - monitor team morale impact');
-    }
-
-    if (analytics.engagement_impact?.social_signal_loss?.social_impact === 'high') {
-      recommendations.push('High social signal loss - this reaction was providing valuable community feedback');
-    }
-
-    if (analytics.behavioral_analysis?.removal_reason === 'question_resolved') {
-      recommendations.push('Question-related reaction removed - good practice for keeping reactions current');
-    }
-
-    if (analytics.removal_intelligence?.removal_timing?.timing_category === 'immediate') {
-      recommendations.push('Quick removal suggests possible accidental reaction - normal behavior pattern');
-    }
-
-    return recommendations;
   },
 };
+
+function analyzeCurrentReactions(message: any) {
+  const reactions = message.reactions || [];
+  
+  return {
+    total_reactions: reactions.reduce((sum: number, r: any) => sum + r.count, 0),
+    unique_reactions: reactions.length,
+    reaction_details: reactions.map((r: any) => ({
+      name: r.name,
+      count: r.count,
+      users: r.users || [],
+    })),
+    most_popular: reactions.length > 0 
+      ? reactions.reduce((max: any, r: any) => r.count > max.count ? r : max)
+      : null,
+    diversity_score: reactions.length > 0 
+      ? Math.min(reactions.length / 5, 1) * 100 
+      : 0,
+  };
+}
+
+function generateImpactAnalysis(preAnalysis: any, postAnalysis: any, reactionName: string) {
+  const preReaction = preAnalysis.reaction_details.find((r: any) => r.name === reactionName);
+  const previousCount = preReaction ? preReaction.count : 0;
+  
+  const reactionCountChange = preAnalysis.total_reactions - postAnalysis.total_reactions;
+  const diversityChange = postAnalysis.diversity_score - preAnalysis.diversity_score;
+  
+  return {
+    previous_reaction_count: previousCount,
+    remaining_reactions: postAnalysis.total_reactions,
+    sentiment_change: determineSentimentChange(reactionName, reactionCountChange),
+    user_engagement_impact: determineEngagementImpact(reactionCountChange, previousCount),
+    message_popularity_change: determinePopularityChange(diversityChange, reactionCountChange),
+  };
+}
+
+function generateReactionAnalytics(message: any, channelId: string) {
+  const reactions = message.reactions || [];
+  const messageAge = (Date.now() - parseFloat(message.ts) * 1000) / (1000 * 60 * 60);
+  
+  const reactionNames = reactions.map((r: any) => r.name);
+  const totalReactions = reactions.reduce((sum: number, r: any) => sum + r.count, 0);
+  
+  return {
+    reaction_patterns: {
+      most_common_reactions: reactionNames.slice(0, 5),
+      reaction_diversity_score: Math.min(reactions.length / 5, 1) * 100,
+      engagement_level: totalReactions > 10 ? 'high' : totalReactions > 3 ? 'medium' : 'low',
+    },
+    user_behavior: {
+      reaction_frequency: totalReactions > 5 ? 'frequent' : 'occasional',
+      engagement_consistency: reactions.length > 3 ? 'diverse' : 'focused',
+      social_influence_score: Math.min(totalReactions * 10, 100),
+    },
+    message_context: {
+      message_age_hours: Math.round(messageAge * 100) / 100,
+      thread_activity: message.reply_count > 0 ? 'active' : 'none',
+      channel_engagement: 'normal', // Would need more context to determine
+    },
+  };
+}
+
+function generateRecommendations(preAnalysis: any, removedReaction: string, message: any) {
+  const recommendations = {
+    alternative_reactions: [] as string[],
+    engagement_tips: [] as string[],
+    best_practices: [] as string[],
+  };
+
+  // Suggest alternative reactions based on context
+  const positiveReactions = ['thumbsup', 'heart', 'star', 'clap'];
+  const neutralReactions = ['eyes', 'thinking_face', 'point_up'];
+  
+  if (positiveReactions.includes(removedReaction)) {
+    recommendations.alternative_reactions = ['heart', 'star', 'clap'].filter(r => r !== removedReaction);
+  } else {
+    recommendations.alternative_reactions = neutralReactions;
+  }
+
+  // Engagement tips
+  if (preAnalysis.total_reactions < 3) {
+    recommendations.engagement_tips.push('Consider adding more context to encourage engagement');
+    recommendations.engagement_tips.push('Ask questions to prompt responses');
+  }
+
+  // Best practices
+  recommendations.best_practices.push('Remove reactions thoughtfully to maintain positive engagement');
+  recommendations.best_practices.push('Consider the message context before removing reactions');
+  
+  if (message.thread_ts) {
+    recommendations.best_practices.push('Thread reactions can impact overall conversation flow');
+  }
+
+  return recommendations;
+}
+
+function determineSentimentChange(reactionName: string, countChange: number): string {
+  const positiveReactions = ['thumbsup', 'heart', 'star', 'clap', 'fire', 'rocket'];
+  const negativeReactions = ['thumbsdown', 'x', 'no_entry_sign'];
+  
+  if (positiveReactions.includes(reactionName)) {
+    return countChange > 0 ? 'slightly_negative' : 'neutral';
+  } else if (negativeReactions.includes(reactionName)) {
+    return countChange > 0 ? 'slightly_positive' : 'neutral';
+  }
+  
+  return 'neutral';
+}
+
+function determineEngagementImpact(countChange: number, previousCount: number): string {
+  const impactPercentage = previousCount > 0 ? (countChange / previousCount) * 100 : 0;
+  
+  if (impactPercentage > 50) return 'significant_decrease';
+  if (impactPercentage > 20) return 'moderate_decrease';
+  if (impactPercentage > 5) return 'minor_decrease';
+  return 'minimal_impact';
+}
+
+function determinePopularityChange(diversityChange: number, countChange: number): string {
+  if (countChange > 3 && diversityChange < -10) return 'significant_decrease';
+  if (countChange > 1 && diversityChange < -5) return 'moderate_decrease';
+  if (countChange > 0) return 'minor_decrease';
+  return 'stable';
+}
+
+async function sendRemovalNotifications(
+  channelId: string,
+  message: any,
+  reactionName: string,
+  reason?: string
+) {
+  try {
+    const notificationText = reason 
+      ? `Reaction :${reactionName}: was removed from a message. Reason: ${reason}`
+      : `Reaction :${reactionName}: was removed from a message.`;
+
+    await (slackClient as any).client.chat.postMessage({
+      channel: channelId,
+      text: notificationText,
+      thread_ts: message.ts,
+      reply_broadcast: false,
+    });
+  } catch (error: any) {
+    logger.warn('Failed to send removal notification', { error: error.message });
+  }
+}

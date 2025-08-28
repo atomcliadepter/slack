@@ -2,7 +2,7 @@
 /**
  * Tests for Tool Registry
  */
-import { toolRegistry, MCPTool } from '../../../../src/registry/toolRegistry';
+import { toolRegistry, MCPTool } from '../../../src/registry/toolRegistry';
 
 describe('Tool Registry', () => {
   // Create a mock tool for testing

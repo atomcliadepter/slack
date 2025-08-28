@@ -1,48 +1,56 @@
+import { MCPTool } from '../registry/toolRegistry';
+import { slackClient } from '../utils/slackClient';
+import { Validator } from '../utils/validator';
+import { ErrorHandler } from '../utils/error';
+import { logger } from '../utils/logger';
+import { z } from 'zod';
 
-import { MCPTool } from '@/registry/toolRegistry';
-import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
-import { ErrorHandler } from '@/utils/error';
-import { logger } from '@/utils/logger';
+// Enhanced input validation schema
+const inputSchema = z.object({
+  user: z.string().min(1, 'User ID or username is required'),
+  include_locale: z.boolean().optional().default(false),
+  include_profile: z.boolean().optional().default(true),
+  include_presence: z.boolean().optional().default(false),
+  include_analytics: z.boolean().optional().default(true),
+  include_recommendations: z.boolean().optional().default(true),
+});
 
-/**
- * Enhanced Slack Get User Info Tool
- * Enhanced user data retrieval with presence, activity, and profile analysis
- */
+type SlackGetUserInfoArgs = z.infer<typeof inputSchema>;
+
 export const slackGetUserInfoTool: MCPTool = {
   name: 'slack_get_user_info',
-  description: 'Get comprehensive user information including profile, presence, activity, and team data',
+  description: 'Retrieve comprehensive user information with analytics, presence, and profile details',
   inputSchema: {
     type: 'object',
     properties: {
       user: {
         type: 'string',
-        description: 'User ID, username, or email address',
+        description: 'User ID (U1234567890) or username (@username or username)',
       },
       include_locale: {
         type: 'boolean',
-        description: 'Include user locale information',
+        description: 'Include user locale and timezone information',
         default: false,
+      },
+      include_profile: {
+        type: 'boolean',
+        description: 'Include detailed user profile information',
+        default: true,
       },
       include_presence: {
         type: 'boolean',
-        description: 'Include user presence information',
-        default: true,
-      },
-      include_profile_extended: {
-        type: 'boolean',
-        description: 'Include extended profile information',
-        default: true,
-      },
-      include_team_info: {
-        type: 'boolean',
-        description: 'Include team/workspace information',
+        description: 'Include user presence and status information',
         default: false,
       },
-      include_activity_stats: {
+      include_analytics: {
         type: 'boolean',
-        description: 'Include user activity statistics (requires additional API calls)',
-        default: false,
+        description: 'Include user analytics and insights',
+        default: true,
+      },
+      include_recommendations: {
+        type: 'boolean',
+        description: 'Include user engagement recommendations',
+        default: true,
       },
     },
     required: ['user'],
@@ -52,96 +60,65 @@ export const slackGetUserInfoTool: MCPTool = {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = Validator.validate(ToolSchemas.getUserInfo, args);
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackGetUserInfoArgs;
       
-      // Resolve user ID
-      const userId = await slackClient.resolveUserId(validatedArgs.user);
-      
-      // Get basic user info
-      const userInfoResult = await slackClient.getClient().users.info({
+      // Resolve user ID if username provided
+      let userId = validatedArgs.user;
+      if (!userId.startsWith('U')) {
+        userId = await slackClient.resolveUserId(validatedArgs.user);
+      }
+
+      // Get basic user information
+      const userResult = await slackClient.getClient().users.info({
         user: userId,
         include_locale: validatedArgs.include_locale,
       });
 
-      if (!userInfoResult.user) {
-        throw new Error('User information not found');
+      if (!userResult.ok) {
+        throw new Error(`Failed to get user info: ${userResult.error}`);
       }
 
-      const user = userInfoResult.user;
-      const enhancedUserInfo: any = {
-        ...user,
-        analysis: {
-          is_bot: !!user.is_bot,
-          is_admin: !!user.is_admin,
-          is_owner: !!user.is_owner,
-          is_primary_owner: !!user.is_primary_owner,
-          is_restricted: !!user.is_restricted,
-          is_ultra_restricted: !!user.is_ultra_restricted,
-          has_custom_image: !user.profile?.image_72?.includes('default'),
-          profile_completeness: calculateProfileCompleteness(user.profile),
-        },
-      };
+      const user = userResult.user;
+      if (!user) {
+        throw new Error('User information not found in response');
+      }
 
-      // Get presence information
-      if (args.include_presence !== false) {
+      // Enhanced user data
+      let enhancedUser: any = { ...user };
+
+      // Get presence information if requested
+      if (validatedArgs.include_presence) {
         try {
           const presenceResult = await slackClient.getClient().users.getPresence({
             user: userId,
           });
           
-          enhancedUserInfo.presence = {
-            ...presenceResult,
-            last_activity: presenceResult.last_activity 
-              ? new Date(presenceResult.last_activity * 1000).toISOString()
-              : null,
-          };
-        } catch (error) {
-          logger.warn(`Failed to get presence for user ${userId}:`, ErrorHandler.handleError(error));
-          enhancedUserInfo.presence = { error: 'Unable to retrieve presence information' };
-        }
-      }
-
-      // Get extended profile information
-      if (args.include_profile_extended) {
-        try {
-          const profileResult = await slackClient.getClient().users.profile.get({
-            user: userId,
-          });
-          
-          if (profileResult.profile) {
-            enhancedUserInfo.profile_extended = {
-              ...profileResult.profile,
-              custom_fields: extractCustomFields(profileResult.profile),
-              social_links: extractSocialLinks(profileResult.profile),
+          if (presenceResult.ok) {
+            enhancedUser.presence_info = {
+              presence: presenceResult.presence,
+              online: presenceResult.online,
+              auto_away: presenceResult.auto_away,
+              manual_away: presenceResult.manual_away,
+              connection_count: presenceResult.connection_count,
+              last_activity: presenceResult.last_activity,
             };
           }
         } catch (error) {
-          logger.warn(`Failed to get extended profile for user ${userId}:`, ErrorHandler.handleError(error));
+          // Continue without presence info if API call fails
+          logger.error('Failed to get user presence:', error);
         }
       }
 
-      // Get team information
-      if (args.include_team_info) {
-        try {
-          const teamInfo = await slackClient.getWorkspaceInfo();
-          if (teamInfo.success) {
-            enhancedUserInfo.team_info = teamInfo.workspace;
-          }
-        } catch (error) {
-          logger.warn('Failed to get team info:', ErrorHandler.handleError(error));
-        }
+      // Generate analytics if requested
+      let analytics = {};
+      if (validatedArgs.include_analytics) {
+        analytics = this.generateUserAnalytics(enhancedUser, validatedArgs);
       }
 
-      // Get activity statistics (expensive operation)
-      if (args.include_activity_stats) {
-        try {
-          const activityStats = await getUserActivityStats(userId);
-          enhancedUserInfo.activity_stats = activityStats;
-        } catch (error) {
-          logger.warn(`Failed to get activity stats for user ${userId}:`, ErrorHandler.handleError(error));
-          enhancedUserInfo.activity_stats = { error: 'Unable to retrieve activity statistics' };
-        }
+      // Generate recommendations if requested
+      let recommendations = [];
+      if (validatedArgs.include_recommendations) {
+        recommendations = this.generateUserRecommendations(enhancedUser, validatedArgs);
       }
 
       const duration = Date.now() - startTime;
@@ -149,19 +126,21 @@ export const slackGetUserInfoTool: MCPTool = {
 
       return {
         success: true,
-        user: enhancedUserInfo,
-        metadata: {
+        data: {
+          user: enhancedUser,
           user_id: userId,
-          original_query: validatedArgs.user,
+          resolved_from: validatedArgs.user !== userId ? validatedArgs.user : undefined,
+        },
+        metadata: {
+          execution_time_ms: duration,
+          analytics: validatedArgs.include_analytics ? analytics : undefined,
+          recommendations: validatedArgs.include_recommendations ? recommendations : undefined,
           data_included: {
             basic_info: true,
-            presence: args.include_presence !== false,
-            extended_profile: args.include_profile_extended !== false,
-            team_info: args.include_team_info || false,
-            activity_stats: args.include_activity_stats || false,
+            profile: validatedArgs.include_profile,
             locale: validatedArgs.include_locale,
+            presence: validatedArgs.include_presence && !!enhancedUser.presence_info,
           },
-          execution_time_ms: duration,
         },
       };
 
@@ -177,103 +156,142 @@ export const slackGetUserInfoTool: MCPTool = {
       });
     }
   },
-};
 
-/**
- * Calculate profile completeness percentage
- */
-function calculateProfileCompleteness(profile: any): number {
-  if (!profile) return 0;
-  
-  const fields = [
-    'real_name',
-    'display_name',
-    'title',
-    'phone',
-    'skype',
-    'status_text',
-    'image_72',
-  ];
-  
-  const completedFields = fields.filter(field => 
-    profile[field] && profile[field] !== '' && !profile[field].includes('default')
-  ).length;
-  
-  return Math.round((completedFields / fields.length) * 100);
-}
+  // Helper method to generate user analytics
+  generateUserAnalytics(user: any, args: SlackGetUserInfoArgs): Record<string, any> {
+    const analytics: any = {
+      user_characteristics: {
+        is_admin: user.is_admin || false,
+        is_owner: user.is_owner || false,
+        is_primary_owner: user.is_primary_owner || false,
+        is_restricted: user.is_restricted || false,
+        is_ultra_restricted: user.is_ultra_restricted || false,
+        is_bot: user.is_bot || false,
+        is_app_user: user.is_app_user || false,
+        has_2fa: user.has_2fa || false,
+      },
+      account_status: {
+        deleted: user.deleted || false,
+        is_email_confirmed: user.is_email_confirmed || false,
+        updated: user.updated || 0,
+        created_timestamp: user.created || null,
+        account_age_days: user.created ? Math.floor((Date.now() / 1000 - user.created) / 86400) : null,
+      },
+    };
 
-/**
- * Extract custom fields from profile
- */
-function extractCustomFields(profile: any): Record<string, any> {
-  const customFields: Record<string, any> = {};
-  
-  if (profile.fields) {
-    Object.entries(profile.fields).forEach(([key, value]: [string, any]) => {
-      if (value && typeof value === 'object' && value.value) {
-        customFields[key] = {
-          label: value.label || key,
-          value: value.value,
-          alt: value.alt || '',
-        };
-      }
-    });
-  }
-  
-  return customFields;
-}
-
-/**
- * Extract social links from profile
- */
-function extractSocialLinks(profile: any): string[] {
-  const socialLinks: string[] = [];
-  
-  // Common social media patterns
-  const socialPatterns = [
-    /https?:\/\/(www\.)?(twitter|x)\.com\/\w+/i,
-    /https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+/i,
-    /https?:\/\/(www\.)?github\.com\/\w+/i,
-    /https?:\/\/(www\.)?instagram\.com\/\w+/i,
-    /https?:\/\/(www\.)?facebook\.com\/[\w.]+/i,
-  ];
-  
-  // Check various profile fields for social links
-  const fieldsToCheck = [
-    profile.status_text,
-    profile.title,
-    ...(profile.fields ? Object.values(profile.fields).map((f: any) => f.value) : []),
-  ];
-  
-  fieldsToCheck.forEach(field => {
-    if (typeof field === 'string') {
-      socialPatterns.forEach(pattern => {
-        const match = field.match(pattern);
-        if (match && !socialLinks.includes(match[0])) {
-          socialLinks.push(match[0]);
-        }
-      });
+    // Profile analysis
+    if (user.profile) {
+      analytics.profile_analysis = {
+        has_avatar: !!(user.profile.image_72 || user.profile.avatar_hash),
+        has_display_name: !!user.profile.display_name,
+        has_real_name: !!user.profile.real_name,
+        has_title: !!user.profile.title,
+        has_phone: !!user.profile.phone,
+        has_status: !!(user.profile.status_text || user.profile.status_emoji),
+        profile_completeness: this.calculateProfileCompleteness(user.profile),
+      };
     }
-  });
-  
-  return socialLinks;
-}
 
-/**
- * Get user activity statistics (simplified version)
- */
-async function getUserActivityStats(_userId: string): Promise<any> {
-  // This would require additional API calls to get comprehensive stats
-  // For now, return a placeholder structure
-  return {
-    note: 'Activity statistics require additional API permissions and calls',
-    available_metrics: [
-      'message_count_last_30_days',
-      'channels_active_in',
-      'files_shared',
-      'reactions_given',
-      'reactions_received',
-    ],
-    implementation_status: 'placeholder',
-  };
-}
+    // Presence analysis
+    if (user.presence_info) {
+      analytics.presence_analysis = {
+        is_online: user.presence_info.online,
+        is_away: user.presence_info.presence === 'away',
+        connection_count: user.presence_info.connection_count || 0,
+        last_activity_hours_ago: user.presence_info.last_activity ? 
+          Math.floor((Date.now() / 1000 - user.presence_info.last_activity) / 3600) : null,
+      };
+    }
+
+    // Timezone analysis
+    if (user.tz) {
+      analytics.timezone_info = {
+        timezone: user.tz,
+        timezone_label: user.tz_label,
+        timezone_offset: user.tz_offset,
+        current_local_time: this.calculateLocalTime(user.tz_offset),
+      };
+    }
+
+    return analytics;
+  },
+
+  // Helper method to calculate profile completeness
+  calculateProfileCompleteness(profile: any): number {
+    const fields = [
+      'display_name', 'real_name', 'title', 'phone', 'email',
+      'image_72', 'status_text', 'first_name', 'last_name'
+    ];
+    
+    const completedFields = fields.filter(field => profile[field]).length;
+    return Math.round((completedFields / fields.length) * 100);
+  },
+
+  // Helper method to calculate local time
+  calculateLocalTime(tzOffset: number): string {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const localTime = new Date(utc + (tzOffset * 1000));
+    return localTime.toISOString();
+  },
+
+  // Helper method to generate user recommendations
+  generateUserRecommendations(user: any, args: SlackGetUserInfoArgs): string[] {
+    const recommendations = [];
+
+    // Profile recommendations
+    if (user.profile) {
+      const completeness = this.calculateProfileCompleteness(user.profile);
+      
+      if (completeness < 50) {
+        recommendations.push('Consider completing user profile for better team visibility');
+      }
+      
+      if (!user.profile.display_name) {
+        recommendations.push('Adding a display name helps with team recognition');
+      }
+      
+      if (!user.profile.title) {
+        recommendations.push('Adding a job title provides context for team members');
+      }
+      
+      if (!user.profile.image_72 && !user.profile.avatar_hash) {
+        recommendations.push('Adding a profile picture improves team communication');
+      }
+      
+      if (!user.profile.status_text && !user.profile.status_emoji) {
+        recommendations.push('Setting a status helps communicate availability');
+      }
+    }
+
+    // Security recommendations
+    if (!user.has_2fa) {
+      recommendations.push('Enable two-factor authentication for enhanced security');
+    }
+
+    // Presence recommendations
+    if (user.presence_info) {
+      if (user.presence_info.connection_count === 0) {
+        recommendations.push('User appears to be offline - consider alternative communication methods');
+      }
+      
+      if (user.presence_info.last_activity) {
+        const hoursAgo = Math.floor((Date.now() / 1000 - user.presence_info.last_activity) / 3600);
+        if (hoursAgo > 24) {
+          recommendations.push('User has been inactive for over 24 hours - consider asynchronous communication');
+        }
+      }
+    }
+
+    // Account status recommendations
+    if (user.is_restricted || user.is_ultra_restricted) {
+      recommendations.push('User has restricted access - verify permissions for collaboration');
+    }
+
+    if (user.deleted) {
+      recommendations.push('User account is deactivated - contact may not be possible');
+    }
+
+    return recommendations;
+  },
+};

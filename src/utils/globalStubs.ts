@@ -1019,9 +1019,9 @@ Object.assign(globalThis, {
   // Generic Functions
   generateUserRecommendations: functionStubs.generateUserRecommendations,
   generatePinRecommendations: functionStubs.generatePinRecommendations,
-  calculateActivityTrend: functionStubs.calculateActivityTrend,
-  calculateUXScore: functionStubs.calculateUXScore,
-  calculateEngagementReduction: functionStubs.calculateEngagementReduction,
+  calculateActivityTrendStub: functionStubs.calculateActivityTrend,
+  calculateUXScoreStub: functionStubs.calculateUXScore,
+  calculateEngagementReductionStub: functionStubs.calculateEngagementReduction,
 
   // Channel analysis stubs
   determineEditType: () => 'content_update',

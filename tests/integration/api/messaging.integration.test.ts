@@ -1,5 +1,5 @@
 
-import { slackSendMessageTool } from '../../../../src/tools/slackSendMessage';
+import { slackSendMessageTool } from '../../../src/tools/slackSendMessage';
 import { skipIntegration, mockValidArgs, mockInvalidArgs, delay } from './testUtils';
 
 const describeOrSkip = skipIntegration ? describe.skip : describe;

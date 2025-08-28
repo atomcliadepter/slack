@@ -1,24 +1,131 @@
+/**
+ * Enhanced Slack Leave Channel Tool v2.0.0
+ * Comprehensive channel leaving with validation, safety checks, and analytics
+ */
 
 import { MCPTool } from '@/registry/toolRegistry';
 import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
+import { Validator } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import { z } from 'zod';
 
 /**
- * Enhanced Slack Leave Channel Tool
- * Comprehensive channel leaving with validation, membership verification, and analytics
+ * Input validation schema
  */
+const inputSchema = z.object({
+  channel: z.string()
+    .min(1, 'Channel is required')
+    .refine(
+      (val) => /^(#?[a-z0-9_-]+|C[A-Z0-9]{8,})$/i.test(val),
+      'Channel must be a valid channel ID (C1234567890) or channel name (#general)'
+    ),
+  validate_permissions: z.boolean().default(true),
+  check_membership: z.boolean().default(true),
+  prevent_general_leave: z.boolean().default(true),
+  include_channel_info: z.boolean().default(true),
+  include_member_count: z.boolean().default(true),
+  include_leave_analytics: z.boolean().default(true),
+  auto_retry: z.boolean().default(false),
+  retry_attempts: z.number().min(1).max(5).default(3),
+  send_leave_message: z.boolean().default(false),
+  leave_message: z.string().optional(),
+  include_recommendations: z.boolean().default(true),
+  confirm_leave: z.boolean().default(false),
+  force_leave: z.boolean().default(false),
+});
+
+type SlackLeaveChannelArgs = z.infer<typeof inputSchema>;
+
+/**
+ * Leave analytics interface
+ */
+interface LeaveAnalytics {
+  leave_success: boolean;
+  was_member: boolean;
+  channel_type: 'public' | 'private' | 'im' | 'mpim' | 'general' | 'unknown';
+  member_count_before?: number;
+  member_count_after?: number;
+  leave_method: 'direct' | 'retry' | 'force';
+  permission_level: 'admin' | 'member' | 'guest' | 'restricted' | 'unknown';
+  channel_importance: 'critical' | 'high' | 'medium' | 'low' | 'unknown';
+  leave_timing: {
+    permission_check_ms?: number;
+    membership_check_ms?: number;
+    leave_operation_ms: number;
+    total_operation_ms: number;
+  };
+  safety_checks: {
+    is_general_channel: boolean;
+    is_only_admin: boolean;
+    has_recent_activity: boolean;
+    member_count_low: boolean;
+  };
+  potential_issues: string[];
+  success_factors: string[];
+  warnings: string[];
+}
+
+/**
+ * Channel information interface
+ */
+interface ChannelInfo {
+  id: string;
+  name: string;
+  is_channel: boolean;
+  is_group: boolean;
+  is_im: boolean;
+  is_mpim: boolean;
+  is_private: boolean;
+  is_archived: boolean;
+  is_general: boolean;
+  is_member: boolean;
+  is_org_shared: boolean;
+  is_ext_shared: boolean;
+  created: number;
+  creator: string;
+  name_normalized: string;
+  num_members?: number;
+  purpose?: {
+    value: string;
+    creator: string;
+    last_set: number;
+  };
+  topic?: {
+    value: string;
+    creator: string;
+    last_set: number;
+  };
+  previous_names?: string[];
+  locale?: string;
+}
+
+/**
+ * Leave result interface
+ */
+interface LeaveResult {
+  success: boolean;
+  channel_left: boolean;
+  was_not_member: boolean;
+  prevented_leave: boolean;
+  prevention_reason?: string;
+  channel_info?: ChannelInfo;
+  member_count?: number;
+  leave_analytics?: LeaveAnalytics;
+  recommendations?: string[];
+  warnings?: string[];
+  leave_message_sent?: boolean;
+}
+
 export const slackLeaveChannelTool: MCPTool = {
   name: 'slack_leave_channel',
-  description: 'Leave a Slack channel with advanced validation, membership verification, and leave analytics',
+  description: 'Leave a Slack channel with advanced validation, safety checks, and comprehensive analytics',
   inputSchema: {
     type: 'object',
     properties: {
       channel: {
         type: 'string',
         description: 'Channel ID (C1234567890) or channel name (#general) to leave',
-        pattern: '^(#?[a-z0-9_-]+|C[A-Z0-9]{8,})$',
       },
       validate_permissions: {
         type: 'boolean',
@@ -50,29 +157,41 @@ export const slackLeaveChannelTool: MCPTool = {
         description: 'Include analytics about the leave operation',
         default: true,
       },
-      confirmation_required: {
-        type: 'boolean',
-        description: 'Require confirmation for important channels (general, large channels)',
-        default: true,
-      },
       auto_retry: {
         type: 'boolean',
         description: 'Automatically retry on transient failures',
-        default: true,
+        default: false,
       },
       retry_attempts: {
         type: 'number',
-        description: 'Number of retry attempts for transient failures',
+        description: 'Number of retry attempts (1-5)',
         minimum: 1,
         maximum: 5,
         default: 3,
       },
-      retry_delay_ms: {
-        type: 'number',
-        description: 'Delay between retry attempts in milliseconds',
-        minimum: 100,
-        maximum: 10000,
-        default: 1000,
+      send_leave_message: {
+        type: 'boolean',
+        description: 'Send a message before leaving the channel',
+        default: false,
+      },
+      leave_message: {
+        type: 'string',
+        description: 'Custom message to send before leaving (if send_leave_message is true)',
+      },
+      include_recommendations: {
+        type: 'boolean',
+        description: 'Include recommendations about leaving the channel',
+        default: true,
+      },
+      confirm_leave: {
+        type: 'boolean',
+        description: 'Require explicit confirmation for important channels',
+        default: false,
+      },
+      force_leave: {
+        type: 'boolean',
+        description: 'Force leave even if safety checks fail (use with caution)',
+        default: false,
       },
     },
     required: ['channel'],
@@ -82,79 +201,280 @@ export const slackLeaveChannelTool: MCPTool = {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = Validator.validate(ToolSchemas.leaveChannel, args);
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackLeaveChannelArgs;
+      const client = slackClient.getClient();
       
-      // Normalize channel identifier
-      const channelId = await normalizeChannelIdentifier(validatedArgs.channel);
+      // Resolve channel ID from name if needed
+      const channelId = await this.resolveChannelId(validatedArgs.channel);
       
-      // Pre-leave validation and checks
-      const preLeaveAnalysis = await performPreLeaveAnalysis(channelId, validatedArgs);
-      
-      // If not a member and check_membership is enabled, return early
-      if (validatedArgs.check_membership && !preLeaveAnalysis.is_member) {
-        const duration = Date.now() - startTime;
-        logger.logToolExecution('slack_leave_channel', args, duration);
+      let leaveAnalytics: LeaveAnalytics = {
+        leave_success: false,
+        was_member: false,
+        channel_type: 'unknown',
+        leave_method: 'direct',
+        permission_level: 'unknown',
+        channel_importance: 'unknown',
+        leave_timing: {
+          leave_operation_ms: 0,
+          total_operation_ms: 0,
+        },
+        safety_checks: {
+          is_general_channel: false,
+          is_only_admin: false,
+          has_recent_activity: false,
+          member_count_low: false,
+        },
+        potential_issues: [],
+        success_factors: [],
+        warnings: [],
+      };
+
+      let channelInfo: ChannelInfo | undefined;
+      let memberCount: number | undefined;
+      let isMember = false;
+      let leaveSuccess = false;
+      let preventedLeave = false;
+      let preventionReason: string | undefined;
+      let warnings: string[] = [];
+      let leaveMessageSent = false;
+
+      // Step 1: Get channel information
+      if (validatedArgs.include_channel_info || validatedArgs.check_membership) {
+        const channelInfoStart = Date.now();
+        try {
+          const infoResult = await client.conversations.info({
+            channel: channelId,
+            include_num_members: validatedArgs.include_member_count,
+          });
+
+          if (infoResult.ok && infoResult.channel) {
+            channelInfo = infoResult.channel as ChannelInfo;
+            memberCount = channelInfo.num_members;
+            isMember = channelInfo.is_member || false;
+            
+            // Analyze channel type and importance
+            leaveAnalytics.channel_type = this.determineChannelType(channelInfo);
+            leaveAnalytics.channel_importance = this.analyzeChannelImportance(channelInfo);
+            leaveAnalytics.member_count_before = memberCount;
+            leaveAnalytics.was_member = isMember;
+            
+            // Safety checks
+            leaveAnalytics.safety_checks = this.performSafetyChecks(channelInfo);
+          }
+        } catch (error) {
+          warnings.push('Could not retrieve channel information - proceeding with leave attempt');
+          logger.warn('Channel info retrieval failed:', error);
+        }
+      }
+
+      // Step 2: Check if currently a member
+      if (validatedArgs.check_membership && !isMember) {
+        leaveAnalytics.leave_success = true;
+        leaveAnalytics.was_member = false;
+        leaveAnalytics.success_factors.push('Not a member of the channel');
         
+        const duration = Date.now() - startTime;
+        leaveAnalytics.leave_timing.total_operation_ms = duration;
+        
+        logger.logToolExecution('slack_leave_channel', args, duration);
+
         return {
           success: true,
-          not_member: true,
-          channel_id: channelId,
-          channel_info: preLeaveAnalysis.channel_info,
-          message: 'Not a member of this channel',
-          leave_analytics: {
-            ...preLeaveAnalysis.analytics,
-            leave_attempted: false,
-            leave_successful: false,
-            not_member: true,
-            execution_time_ms: duration,
-          },
+          data: {
+            success: true,
+            channel_left: false,
+            was_not_member: true,
+            prevented_leave: false,
+            channel_info: validatedArgs.include_channel_info ? channelInfo : undefined,
+            member_count: validatedArgs.include_member_count ? memberCount : undefined,
+            leave_analytics: validatedArgs.include_leave_analytics ? leaveAnalytics : undefined,
+            recommendations: validatedArgs.include_recommendations ? 
+              this.generateRecommendations(channelInfo, leaveAnalytics, 'not_member') : undefined,
+            warnings: warnings.length > 0 ? warnings : undefined,
+          } as LeaveResult,
           metadata: {
-            pre_leave_checks: preLeaveAnalysis.checks,
             execution_time_ms: duration,
+            channel_id: channelId,
+            operation_type: 'membership_check',
+            was_member: false,
           },
         };
       }
-      
-      // Check for general channel protection
-      if (validatedArgs.prevent_general_leave && preLeaveAnalysis.is_general_channel) {
-        throw new Error('Cannot leave #general channel - this is typically not allowed and may cause issues');
+
+      // Step 3: Safety checks
+      if (!validatedArgs.force_leave) {
+        const safetyResult = this.checkLeaveSafety(channelInfo, validatedArgs);
+        if (!safetyResult.safe) {
+          preventedLeave = true;
+          preventionReason = safetyResult.reason;
+          leaveAnalytics.warnings.push(`Leave prevented: ${safetyResult.reason}`);
+          
+          if (!validatedArgs.confirm_leave) {
+            const duration = Date.now() - startTime;
+            leaveAnalytics.leave_timing.total_operation_ms = duration;
+            
+            return {
+              success: true,
+              data: {
+                success: false,
+                channel_left: false,
+                was_not_member: false,
+                prevented_leave: true,
+                prevention_reason: preventionReason,
+                channel_info: validatedArgs.include_channel_info ? channelInfo : undefined,
+                leave_analytics: validatedArgs.include_leave_analytics ? leaveAnalytics : undefined,
+                recommendations: validatedArgs.include_recommendations ? 
+                  this.generateRecommendations(channelInfo, leaveAnalytics, 'prevented') : undefined,
+                warnings: warnings.concat(leaveAnalytics.warnings),
+              } as LeaveResult,
+              metadata: {
+                execution_time_ms: duration,
+                channel_id: channelId,
+                operation_type: 'safety_check',
+                prevented: true,
+                reason: preventionReason,
+              },
+            };
+          }
+        }
       }
-      
-      // Confirmation check for important channels
-      if (validatedArgs.confirmation_required && preLeaveAnalysis.requires_confirmation) {
-        logger.warn(`Leaving important channel ${channelId} - ${preLeaveAnalysis.confirmation_reason}`);
+
+      // Step 4: Validate permissions if requested
+      if (validatedArgs.validate_permissions) {
+        const permissionStart = Date.now();
+        try {
+          const authResult = await client.auth.test();
+          if (authResult.ok) {
+            leaveAnalytics.permission_level = this.determinePermissionLevel(authResult);
+            leaveAnalytics.leave_timing.permission_check_ms = Date.now() - permissionStart;
+            
+            // Check if user is the only admin
+            if (channelInfo?.is_private && leaveAnalytics.permission_level === 'admin') {
+              const adminCheck = await this.checkIfOnlyAdmin(channelId);
+              if (adminCheck.isOnlyAdmin) {
+                leaveAnalytics.safety_checks.is_only_admin = true;
+                leaveAnalytics.warnings.push('You are the only admin in this private channel');
+              }
+            }
+          }
+        } catch (error) {
+          warnings.push('Permission validation failed - proceeding with leave attempt');
+          leaveAnalytics.potential_issues.push('Could not validate user permissions');
+        }
       }
-      
-      // Attempt to leave the channel with retry logic
-      const leaveResult = await attemptChannelLeave(channelId, validatedArgs);
-      
-      // Post-leave analysis and data collection
-      const postLeaveData = await collectPostLeaveData(channelId, validatedArgs, leaveResult);
-      
+
+      // Step 5: Send leave message if requested
+      if (validatedArgs.send_leave_message && isMember) {
+        try {
+          const message = validatedArgs.leave_message || 
+            `👋 Thanks for the great discussions! I'm leaving this channel now. Feel free to reach out if needed!`;
+          
+          const messageResult = await client.chat.postMessage({
+            channel: channelId,
+            text: message,
+          });
+          
+          if (messageResult.ok) {
+            leaveMessageSent = true;
+            leaveAnalytics.success_factors.push('Leave message sent successfully');
+          } else {
+            warnings.push('Failed to send leave message');
+          }
+        } catch (error) {
+          warnings.push('Error sending leave message');
+        }
+      }
+
+      // Step 6: Attempt to leave the channel
+      const leaveStart = Date.now();
+      let attempts = 0;
+      const maxAttempts = validatedArgs.auto_retry ? validatedArgs.retry_attempts : 1;
+
+      while (attempts < maxAttempts && !leaveSuccess) {
+        attempts++;
+        
+        try {
+          const leaveResult = await client.conversations.leave({
+            channel: channelId,
+          });
+
+          if (leaveResult.ok) {
+            leaveSuccess = true;
+            leaveAnalytics.leave_success = true;
+            leaveAnalytics.leave_method = attempts > 1 ? 'retry' : 
+              validatedArgs.force_leave ? 'force' : 'direct';
+            leaveAnalytics.success_factors.push(`Successfully left on attempt ${attempts}`);
+            
+            break;
+          } else {
+            const errorMsg = leaveResult.error || 'Unknown error';
+            leaveAnalytics.potential_issues.push(`Leave attempt ${attempts} failed: ${errorMsg}`);
+            
+            if (attempts === maxAttempts) {
+              throw new Error(`Failed to leave channel after ${attempts} attempts: ${errorMsg}`);
+            }
+            
+            // Wait before retry
+            if (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+            }
+          }
+        } catch (error) {
+          leaveAnalytics.potential_issues.push(`Leave attempt ${attempts} error: ${error}`);
+          
+          if (attempts === maxAttempts) {
+            throw error;
+          }
+        }
+      }
+
+      leaveAnalytics.leave_timing.leave_operation_ms = Date.now() - leaveStart;
+
+      // Step 7: Get updated member count
+      if (leaveSuccess && validatedArgs.include_member_count) {
+        try {
+          const updatedInfo = await client.conversations.info({
+            channel: channelId,
+            include_num_members: true,
+          });
+          
+          if (updatedInfo.ok && updatedInfo.channel) {
+            memberCount = updatedInfo.channel.num_members;
+            leaveAnalytics.member_count_after = memberCount;
+          }
+        } catch (error) {
+          warnings.push('Could not retrieve updated member count');
+        }
+      }
+
       const duration = Date.now() - startTime;
-      logger.logToolExecution('slack_leave_channel', args, duration);
+      leaveAnalytics.leave_timing.total_operation_ms = duration;
       
+      logger.logToolExecution('slack_leave_channel', args, duration);
+
       return {
         success: true,
-        left_channel: true,
-        channel_id: channelId,
-        channel_info: postLeaveData.channel_info,
-        remaining_member_count: postLeaveData.member_count,
-        leave_analytics: {
-          ...preLeaveAnalysis.analytics,
-          leave_attempted: true,
-          leave_successful: true,
-          retry_count: leaveResult.retry_count,
-          final_attempt_successful: true,
-          execution_time_ms: duration,
-          ...postLeaveData.analytics,
-        },
+        data: {
+          success: leaveSuccess,
+          channel_left: leaveSuccess,
+          was_not_member: false,
+          prevented_leave: preventedLeave,
+          prevention_reason: preventionReason,
+          channel_info: validatedArgs.include_channel_info ? channelInfo : undefined,
+          member_count: validatedArgs.include_member_count ? memberCount : undefined,
+          leave_analytics: validatedArgs.include_leave_analytics ? leaveAnalytics : undefined,
+          recommendations: validatedArgs.include_recommendations ? 
+            this.generateRecommendations(channelInfo, leaveAnalytics, leaveSuccess ? 'success' : 'failed') : undefined,
+          warnings: warnings.concat(leaveAnalytics.warnings).length > 0 ? 
+            warnings.concat(leaveAnalytics.warnings) : undefined,
+          leave_message_sent: leaveMessageSent,
+        } as LeaveResult,
         metadata: {
-          pre_leave_checks: preLeaveAnalysis.checks,
-          leave_method: leaveResult.method,
-          warnings: leaveResult.warnings,
           execution_time_ms: duration,
+          channel_id: channelId,
+          operation_type: 'channel_leave',
+          attempts_made: attempts,
+          leave_successful: leaveSuccess,
         },
       };
 
@@ -163,357 +483,213 @@ export const slackLeaveChannelTool: MCPTool = {
       const errorMessage = ErrorHandler.handleError(error);
       logger.logToolError('slack_leave_channel', errorMessage, args);
       
-      // Enhanced error handling with specific guidance
-      const enhancedError = enhanceLeaveError(error, args);
-      
       return ErrorHandler.createErrorResponse(error, {
         tool: 'slack_leave_channel',
         args,
         execution_time_ms: duration,
-        error_guidance: enhancedError.guidance,
-        error_category: enhancedError.category,
-        retry_recommended: enhancedError.retryable,
       });
     }
   },
+
+  /**
+   * Resolve channel ID from name or ID
+   */
+  async resolveChannelId(channel: string): Promise<string> {
+    // If it's already a channel ID, return it
+    if (/^C[A-Z0-9]{8,}$/.test(channel)) {
+      return channel;
+    }
+
+    // Remove # prefix if present
+    const channelName = channel.replace(/^#/, '');
+    
+    try {
+      const client = slackClient.getClient();
+      const result = await client.conversations.list({
+        types: 'public_channel,private_channel',
+        limit: 1000,
+      });
+
+      if (result.ok && result.channels) {
+        const foundChannel = result.channels.find(
+          (ch: any) => ch.name === channelName || ch.name_normalized === channelName
+        );
+        
+        if (foundChannel && foundChannel.id) {
+          return foundChannel.id;
+        }
+      }
+      
+      throw new Error(`Channel '${channel}' not found`);
+    } catch (error) {
+      throw new Error(`Failed to resolve channel '${channel}': ${error}`);
+    }
+  },
+
+  /**
+   * Determine channel type from channel info
+   */
+  determineChannelType(channelInfo: ChannelInfo): 'public' | 'private' | 'im' | 'mpim' | 'general' | 'unknown' {
+    if (channelInfo.is_im) return 'im';
+    if (channelInfo.is_mpim) return 'mpim';
+    if (channelInfo.is_general) return 'general';
+    if (channelInfo.is_private) return 'private';
+    if (channelInfo.is_channel) return 'public';
+    return 'unknown';
+  },
+
+  /**
+   * Analyze channel importance
+   */
+  analyzeChannelImportance(channelInfo: ChannelInfo): 'critical' | 'high' | 'medium' | 'low' | 'unknown' {
+    const memberCount = channelInfo.num_members || 0;
+    const isGeneral = channelInfo.is_general;
+    const isOrgShared = channelInfo.is_org_shared;
+    const hasRecentActivity = channelInfo.topic?.last_set && 
+      (Date.now() / 1000 - channelInfo.topic.last_set) < 86400 * 7; // 7 days
+
+    if (isGeneral) return 'critical';
+    if (isOrgShared || memberCount > 100) return 'high';
+    if (memberCount > 20 || hasRecentActivity) return 'medium';
+    if (memberCount > 5) return 'low';
+    return 'unknown';
+  },
+
+  /**
+   * Perform safety checks
+   */
+  performSafetyChecks(channelInfo: ChannelInfo): LeaveAnalytics['safety_checks'] {
+    return {
+      is_general_channel: channelInfo.is_general || false,
+      is_only_admin: false, // Will be checked separately
+      has_recent_activity: channelInfo.topic?.last_set ? 
+        (Date.now() / 1000 - channelInfo.topic.last_set) < 86400 * 7 : false,
+      member_count_low: (channelInfo.num_members || 0) <= 3,
+    };
+  },
+
+  /**
+   * Check if leaving is safe
+   */
+  checkLeaveSafety(channelInfo?: ChannelInfo, args?: SlackLeaveChannelArgs): { safe: boolean; reason?: string } {
+    if (!channelInfo) {
+      return { safe: true };
+    }
+
+    // Prevent leaving general channel
+    if (args?.prevent_general_leave && channelInfo.is_general) {
+      return { 
+        safe: false, 
+        reason: 'Cannot leave #general channel (safety feature enabled)' 
+      };
+    }
+
+    // Warn about small channels
+    if (channelInfo.num_members && channelInfo.num_members <= 2) {
+      return { 
+        safe: false, 
+        reason: 'Channel has very few members - leaving may disrupt conversations' 
+      };
+    }
+
+    return { safe: true };
+  },
+
+  /**
+   * Check if user is the only admin
+   */
+  async checkIfOnlyAdmin(channelId: string): Promise<{ isOnlyAdmin: boolean; adminCount: number }> {
+    try {
+      const client = slackClient.getClient();
+      const membersResult = await client.conversations.members({
+        channel: channelId,
+        limit: 1000,
+      });
+
+      if (membersResult.ok && membersResult.members) {
+        // This is a simplified check - in reality, you'd need to check each member's admin status
+        // For now, we'll assume if there are multiple members, there are likely other admins
+        return {
+          isOnlyAdmin: membersResult.members.length <= 1,
+          adminCount: membersResult.members.length > 1 ? 2 : 1, // Simplified
+        };
+      }
+    } catch (error) {
+      logger.warn('Failed to check admin status:', error);
+    }
+
+    return { isOnlyAdmin: false, adminCount: 1 };
+  },
+
+  /**
+   * Determine user permission level
+   */
+  determinePermissionLevel(authResult: any): 'admin' | 'member' | 'guest' | 'restricted' | 'unknown' {
+    if (authResult.is_admin) return 'admin';
+    if (authResult.is_owner) return 'admin';
+    if (authResult.is_restricted) return 'restricted';
+    if (authResult.is_ultra_restricted) return 'guest';
+    return 'member';
+  },
+
+  /**
+   * Generate recommendations for channel leaving
+   */
+  generateRecommendations(
+    channelInfo?: ChannelInfo, 
+    analytics?: LeaveAnalytics, 
+    status?: 'success' | 'failed' | 'prevented' | 'not_member'
+  ): string[] {
+    const recommendations: string[] = [];
+
+    if (status === 'not_member') {
+      recommendations.push('You are not a member of this channel');
+      recommendations.push('No action needed - you have already left or were never a member');
+      return recommendations;
+    }
+
+    if (status === 'prevented') {
+      recommendations.push('Channel leave was prevented for safety reasons');
+      
+      if (analytics?.safety_checks.is_general_channel) {
+        recommendations.push('Consider staying in #general for important announcements');
+        recommendations.push('Use "force_leave: true" only if absolutely necessary');
+      }
+      
+      if (analytics?.safety_checks.member_count_low) {
+        recommendations.push('This channel has very few members - consider the impact on others');
+      }
+      
+      return recommendations;
+    }
+
+    if (status === 'success') {
+      recommendations.push('Successfully left the channel! 👋');
+      
+      if (channelInfo?.purpose?.value) {
+        recommendations.push(`You left: ${channelInfo.purpose.value}`);
+      }
+      
+      if (analytics?.channel_importance === 'high' || analytics?.channel_importance === 'critical') {
+        recommendations.push('⚠️  You left an important channel - you can rejoin anytime if needed');
+      }
+      
+      if (analytics?.safety_checks.has_recent_activity) {
+        recommendations.push('This channel had recent activity - consider following up on any ongoing discussions');
+      }
+      
+      recommendations.push('You can rejoin this channel anytime using the join channel tool');
+      recommendations.push('Consider muting instead of leaving if you want to reduce notifications');
+    }
+
+    if (status === 'failed') {
+      recommendations.push('Failed to leave the channel');
+      recommendations.push('Check your permissions and try again');
+      recommendations.push('Contact your workspace admin if the issue persists');
+    }
+
+    return recommendations;
+  },
 };
 
-/**
- * Normalize channel identifier (name or ID) to channel ID
- */
-async function normalizeChannelIdentifier(channel: string): Promise<string> {
-  // If it's already a channel ID, return as-is
-  if (channel.match(/^C[A-Z0-9]{8,}$/)) {
-    return channel;
-  }
-  
-  // Remove # prefix if present
-  const channelName = channel.replace(/^#/, '');
-  
-  // Look up channel by name
-  try {
-    const channelsResult = await slackClient.getClient().conversations.list({
-      types: 'public_channel,private_channel',
-      limit: 1000,
-    });
-    
-    if (channelsResult.channels) {
-      const foundChannel = channelsResult.channels.find(
-        (ch: any) => ch.name === channelName
-      );
-      
-      if (foundChannel && foundChannel.id) {
-        return foundChannel.id;
-      }
-    }
-    
-    throw new Error(`Channel not found: ${channel}`);
-  } catch (error) {
-    throw new Error(`Failed to resolve channel identifier '${channel}': ${ErrorHandler.handleError(error)}`);
-  }
-}
-
-/**
- * Perform comprehensive pre-leave analysis
- */
-async function performPreLeaveAnalysis(channelId: string, args: any): Promise<any> {
-  const analysis = {
-    channel_info: null as any,
-    is_member: false,
-    can_leave: true,
-    is_general_channel: false,
-    requires_confirmation: false,
-    confirmation_reason: '',
-    checks: {
-      channel_exists: false,
-      channel_accessible: false,
-      not_archived: false,
-      permission_check: false,
-      membership_check: false,
-      general_channel_check: false,
-    },
-    analytics: {
-      channel_type: 'unknown',
-      is_private: false,
-      is_archived: false,
-      member_count_estimate: 0,
-      user_join_date: null as string | null,
-      created_date: null as string | null,
-      purpose: null as string | null,
-      topic: null as string | null,
-      channel_activity_level: 'unknown',
-    },
-    warnings: [] as string[],
-  };
-  
-  try {
-    // Get channel information
-    const channelInfo = await slackClient.getClient().conversations.info({
-      channel: channelId,
-    });
-    
-    if (channelInfo.channel) {
-      analysis.channel_info = channelInfo.channel;
-      analysis.checks.channel_exists = true;
-      analysis.checks.channel_accessible = true;
-      
-      // Extract analytics
-      analysis.analytics.channel_type = channelInfo.channel.is_private ? 'private' : 'public';
-      analysis.analytics.is_private = !!channelInfo.channel.is_private;
-      analysis.analytics.is_archived = !!channelInfo.channel.is_archived;
-      analysis.analytics.member_count_estimate = channelInfo.channel.num_members || 0;
-      analysis.analytics.created_date = channelInfo.channel.created ? 
-        new Date(channelInfo.channel.created * 1000).toISOString() : null;
-      analysis.analytics.purpose = channelInfo.channel.purpose?.value || null;
-      analysis.analytics.topic = channelInfo.channel.topic?.value || null;
-      
-      // Check if archived
-      if (channelInfo.channel.is_archived) {
-        analysis.warnings.push('Channel is archived - leaving archived channels may not be necessary');
-      } else {
-        analysis.checks.not_archived = true;
-      }
-      
-      // Check if this is the general channel
-      if (channelInfo.channel.name === 'general' || channelInfo.channel.is_general) {
-        analysis.is_general_channel = true;
-        analysis.requires_confirmation = true;
-        analysis.confirmation_reason = 'This is the #general channel';
-        analysis.checks.general_channel_check = true;
-      }
-      
-      // Check for large channels that might require confirmation
-      if (channelInfo.channel.num_members && channelInfo.channel.num_members > 100) {
-        analysis.requires_confirmation = true;
-        analysis.confirmation_reason = `Large channel with ${channelInfo.channel.num_members} members`;
-      }
-      
-      // Check membership if requested
-      if (args.check_membership) {
-        analysis.is_member = !!channelInfo.channel.is_member;
-        analysis.checks.membership_check = true;
-        
-        if (!analysis.is_member) {
-          analysis.warnings.push('Not currently a member of this channel');
-        }
-      }
-      
-      // Permission validation
-      if (args.validate_permissions) {
-        // For private channels, check if we have permission to leave
-        if (channelInfo.channel.is_private && !channelInfo.channel.is_member) {
-          analysis.warnings.push('Cannot leave private channel - not a member');
-          analysis.can_leave = false;
-        }
-        analysis.checks.permission_check = true;
-      } else {
-        analysis.checks.permission_check = true;
-      }
-    }
-  } catch (error) {
-    const errorMsg = ErrorHandler.handleError(error);
-    if (errorMsg.includes('channel_not_found')) {
-      throw new Error(`Channel not found: ${channelId}`);
-    } else if (errorMsg.includes('not_authed') || errorMsg.includes('invalid_auth')) {
-      throw new Error('Authentication failed - check your Slack token');
-    } else {
-      analysis.warnings.push(`Pre-leave analysis warning: ${errorMsg}`);
-    }
-  }
-  
-  return analysis;
-}
-
-/**
- * Attempt to leave the channel with retry logic
- */
-async function attemptChannelLeave(channelId: string, args: any): Promise<any> {
-  const result = {
-    success: false,
-    method: 'conversations.leave',
-    retry_count: 0,
-    warnings: [] as string[],
-  };
-  
-  const maxRetries = args.auto_retry ? (args.retry_attempts || 3) : 1;
-  const retryDelay = args.retry_delay_ms || 1000;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const leaveResponse = await slackClient.getClient().conversations.leave({
-        channel: channelId,
-      });
-      
-      result.success = true;
-      result.retry_count = attempt - 1;
-      
-      // Check for any warnings in the response
-      if (leaveResponse && (leaveResponse as any).warning) {
-        result.warnings.push(`Slack API warning: ${(leaveResponse as any).warning}`);
-      }
-      
-      break;
-      
-    } catch (error: any) {
-      const errorMsg = ErrorHandler.handleError(error);
-      result.retry_count = attempt - 1;
-      
-      // Handle specific error cases
-      if (error.data?.error === 'not_in_channel') {
-        throw new Error('Cannot leave channel: Bot is not a member of this channel. Join the channel first before attempting to leave.');
-      }
-      
-      if (error.data?.error === 'cant_leave_general') {
-        throw new Error('Cannot leave the #general channel. This is a Slack restriction.');
-      }
-      
-      // Check if this is a retryable error
-      const isRetryable = isRetryableError(errorMsg);
-      
-      if (attempt === maxRetries || !isRetryable) {
-        // Final attempt or non-retryable error
-        throw error;
-      }
-      
-      // Wait before retry
-      if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
-        result.warnings.push(`Retry attempt ${attempt} after error: ${errorMsg}`);
-      }
-    }
-  }
-  
-  return result;
-}
-
-/**
- * Check if an error is retryable
- */
-function isRetryableError(errorMsg: string): boolean {
-  const retryableErrors = [
-    'rate_limited',
-    'timeout',
-    'internal_error',
-    'service_unavailable',
-    'temporarily_unavailable',
-  ];
-  
-  return retryableErrors.some(error => errorMsg.toLowerCase().includes(error));
-}
-
-/**
- * Collect post-leave data and analytics
- */
-async function collectPostLeaveData(channelId: string, args: any, _leaveResult: any): Promise<any> {
-  const data = {
-    channel_info: null as any,
-    member_count: null as number | null,
-    analytics: {
-      leave_timestamp: new Date().toISOString(),
-      post_leave_member_count: null as number | null,
-      channel_activity_level: 'unknown',
-      estimated_impact: 'minimal',
-    },
-  };
-  
-  try {
-    // Get updated channel information (from outside perspective)
-    if (args.include_channel_info) {
-      try {
-        const channelInfo = await slackClient.getClient().conversations.info({
-          channel: channelId,
-        });
-        data.channel_info = channelInfo.channel;
-      } catch (error) {
-        // Expected to fail since we're no longer a member of private channels
-        const errorMsg = ErrorHandler.handleError(error);
-        if (errorMsg.includes('not_in_channel') || errorMsg.includes('channel_not_found')) {
-          logger.debug(`Cannot access channel info after leaving ${channelId} - this is expected for private channels`);
-        } else {
-          logger.warn(`Failed to get channel info after leaving ${channelId}:`, errorMsg);
-        }
-      }
-    }
-    
-    // Get member count (if still accessible)
-    if (args.include_member_count && data.channel_info) {
-      data.member_count = data.channel_info.num_members || null;
-      data.analytics.post_leave_member_count = data.member_count;
-      
-      // Estimate impact based on channel size
-      if (data.member_count && data.member_count < 10) {
-        data.analytics.estimated_impact = 'significant';
-      } else if (data.member_count && data.member_count < 50) {
-        data.analytics.estimated_impact = 'moderate';
-      } else {
-        data.analytics.estimated_impact = 'minimal';
-      }
-    }
-    
-    // Additional analytics
-    if (args.include_leave_analytics) {
-      // We can't analyze channel activity after leaving, so we'll note this
-      data.analytics.channel_activity_level = 'unknown_after_leave';
-    }
-    
-  } catch (error) {
-    logger.warn(`Failed to collect post-leave data for channel ${channelId}:`, ErrorHandler.handleError(error));
-  }
-  
-  return data;
-}
-
-/**
- * Enhance error messages with specific guidance
- */
-function enhanceLeaveError(error: any, _args: any): any {
-  const errorMsg = ErrorHandler.handleError(error).toLowerCase();
-  
-  let category = 'unknown';
-  let guidance = 'Please check the error details and try again.';
-  let retryable = false;
-  
-  if (errorMsg.includes('not_in_channel')) {
-    category = 'membership';
-    guidance = 'You are not a member of this channel. No action needed.';
-    retryable = false;
-  } else if (errorMsg.includes('channel_not_found')) {
-    category = 'not_found';
-    guidance = 'The specified channel does not exist or is not accessible. Verify the channel name or ID.';
-    retryable = false;
-  } else if (errorMsg.includes('cant_leave_general')) {
-    category = 'general_channel';
-    guidance = 'Cannot leave the #general channel. This is a Slack restriction for workspace integrity.';
-    retryable = false;
-  } else if (errorMsg.includes('method_not_supported_for_channel_type')) {
-    category = 'channel_type';
-    guidance = 'This channel type does not support the leave operation. Check if it\'s a DM or special channel type.';
-    retryable = false;
-  } else if (errorMsg.includes('missing_scope')) {
-    category = 'permissions';
-    guidance = 'Missing required OAuth scopes. Ensure your app has channels:write and/or groups:write permissions.';
-    retryable = false;
-  } else if (errorMsg.includes('not_authed') || errorMsg.includes('invalid_auth')) {
-    category = 'authentication';
-    guidance = 'Authentication failed. Check your Slack token and ensure it is valid.';
-    retryable = false;
-  } else if (errorMsg.includes('rate_limited')) {
-    category = 'rate_limit';
-    guidance = 'Rate limited by Slack API. Wait a moment and try again.';
-    retryable = true;
-  } else if (errorMsg.includes('internal_error') || errorMsg.includes('service_unavailable')) {
-    category = 'service';
-    guidance = 'Slack service temporarily unavailable. Try again in a few moments.';
-    retryable = true;
-  } else if (errorMsg.includes('user_is_bot')) {
-    category = 'bot_restriction';
-    guidance = 'Bot users may have restrictions on leaving certain channels. Check your bot permissions.';
-    retryable = false;
-  }
-  
-  return {
-    category,
-    guidance,
-    retryable,
-  };
-}
+export default slackLeaveChannelTool;

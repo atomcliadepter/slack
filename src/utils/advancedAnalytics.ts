@@ -686,7 +686,8 @@ export function analyzeResolutionIndicators(messages: any[]): ThreadAnalysis['re
 
 // Export types only once at the end
 export type {
-  UserAnalysis,
-  ContentAnalysis,
-  ThreadAnalysis,
+  // Remove duplicate exports - these are already exported above
+  // UserAnalysis,
+  // ContentAnalysis,
+  // ThreadAnalysis,
 };

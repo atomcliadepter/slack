@@ -1,5 +1,5 @@
 
-import { slackSearchMessagesTool } from '../../../../src/tools/slackSearchMessages';
+import { slackSearchMessagesTool } from '../../../src/tools/slackSearchMessages';
 import { skipIntegration, mockValidArgs, mockInvalidArgs } from './testUtils';
 
 const describeOrSkip = skipIntegration ? describe.skip : describe;

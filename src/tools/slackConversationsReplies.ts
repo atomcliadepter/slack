@@ -1,43 +1,176 @@
+/**
+ * Enhanced Slack Conversations Replies Tool v2.0.0
+ * Comprehensive thread reply management with analytics and conversation flow insights
+ */
 
 import { MCPTool } from '@/registry/toolRegistry';
 import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
+import { Validator } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import { z } from 'zod';
 
 /**
- * Enhanced Slack Conversations Replies Tool
- * Get thread replies with engagement metrics and analytics
+ * Input validation schema
  */
+const inputSchema = z.object({
+  channel: z.string()
+    .min(1, 'Channel ID or name is required')
+    .refine(val => val.startsWith('C') || val.startsWith('#'), 'Channel must be a valid ID (C1234567890) or name (#general)'),
+  ts: z.string()
+    .min(1, 'Thread timestamp is required')
+    .regex(/^\d+\.\d+$/, 'Timestamp must be in format "1234567890.123456"'),
+  cursor: z.string().optional(),
+  latest: z.string().optional(),
+  oldest: z.string().optional(),
+  limit: z.number().min(1).max(1000).default(100),
+  inclusive: z.boolean().default(false),
+  include_analytics: z.boolean().default(true),
+  include_recommendations: z.boolean().default(true),
+  thread_analysis: z.boolean().default(false),
+  sentiment_analysis: z.boolean().default(false),
+  engagement_tracking: z.boolean().default(false),
+});
+
+type SlackConversationsRepliesArgs = z.infer<typeof inputSchema>;
+
+/**
+ * Thread analytics interface
+ */
+interface ThreadAnalytics {
+  total_replies: number;
+  unique_participants: number;
+  thread_depth: number;
+  reply_distribution: {
+    by_user: Record<string, number>;
+    by_hour: Record<string, number>;
+    by_day: Record<string, number>;
+  };
+  engagement_metrics: {
+    average_reply_length: number;
+    replies_with_reactions: number;
+    most_active_participant: string | null;
+    response_velocity: number; // Average time between replies in minutes
+    participation_rate: number; // Percentage of unique users vs total replies
+  };
+  conversation_flow: {
+    thread_duration_hours: number;
+    peak_activity_period: string | null;
+    conversation_momentum: 'increasing' | 'decreasing' | 'stable';
+    thread_health_score: number; // 0-100
+  };
+  content_insights: {
+    total_characters: number;
+    total_words: number;
+    average_words_per_reply: number;
+    replies_with_links: number;
+    replies_with_mentions: number;
+    replies_with_files: number;
+  };
+  sentiment_analysis?: {
+    overall_sentiment: number; // -1 to 1
+    sentiment_trend: 'positive' | 'negative' | 'neutral' | 'mixed';
+    positive_replies: number;
+    negative_replies: number;
+    neutral_replies: number;
+  };
+  recommendations: string[];
+  warnings: string[];
+}
+
+/**
+ * Enhanced reply interface
+ */
+interface EnhancedReply {
+  type: string;
+  subtype?: string;
+  ts: string;
+  user?: string;
+  text?: string;
+  thread_ts?: string;
+  parent_user_id?: string;
+  reactions?: Array<{
+    name: string;
+    users: string[];
+    count: number;
+  }>;
+  files?: Array<{
+    id: string;
+    name: string;
+    mimetype: string;
+    size: number;
+    url_private: string;
+  }>;
+  attachments?: any[];
+  blocks?: any[];
+  edited?: {
+    user: string;
+    ts: string;
+  };
+  bot_id?: string;
+  app_id?: string;
+  username?: string;
+  metadata?: {
+    word_count?: number;
+    character_count?: number;
+    has_links?: boolean;
+    has_mentions?: boolean;
+    sentiment_score?: number; // -1 to 1
+    engagement_score?: number; // 0 to 100
+    reply_position?: number; // Position in thread (1, 2, 3...)
+    time_since_parent?: number; // Minutes since parent message
+    time_since_previous?: number; // Minutes since previous reply
+  };
+}
+
+/**
+ * Thread replies result interface
+ */
+interface ThreadRepliesResult {
+  success: boolean;
+  messages: EnhancedReply[];
+  channel_id: string;
+  channel_name?: string;
+  thread_ts: string;
+  parent_message?: EnhancedReply;
+  has_more: boolean;
+  response_metadata?: {
+    next_cursor?: string;
+  };
+  analytics?: ThreadAnalytics;
+  recommendations?: string[];
+  warnings?: string[];
+}
+
 export const slackConversationsRepliesTool: MCPTool = {
   name: 'slack_conversations_replies',
-  description: 'Get thread replies with engagement metrics, sentiment analysis, and conversation flow insights',
+  description: 'Get thread replies with comprehensive analytics, engagement tracking, and conversation flow insights',
   inputSchema: {
     type: 'object',
     properties: {
       channel: {
         type: 'string',
-        description: 'Channel ID or name containing the thread',
+        description: 'Channel ID (C1234567890) or name (#general) containing the thread',
       },
       ts: {
         type: 'string',
-        description: 'Timestamp of the parent message',
+        description: 'Timestamp of the parent message (format: "1234567890.123456")',
       },
       cursor: {
         type: 'string',
-        description: 'Pagination cursor',
+        description: 'Pagination cursor for retrieving additional results',
       },
       latest: {
         type: 'string',
-        description: 'Latest timestamp to include',
+        description: 'Latest timestamp to include (Unix timestamp)',
       },
       oldest: {
         type: 'string',
-        description: 'Oldest timestamp to include',
+        description: 'Oldest timestamp to include (Unix timestamp)',
       },
       limit: {
         type: 'number',
-        description: 'Maximum number of replies to return',
+        description: 'Maximum number of replies to return (1-1000)',
         minimum: 1,
         maximum: 1000,
         default: 100,
@@ -47,10 +180,30 @@ export const slackConversationsRepliesTool: MCPTool = {
         description: 'Include messages with latest or oldest timestamp',
         default: false,
       },
-      analytics: {
+      include_analytics: {
         type: 'boolean',
-        description: 'Include thread engagement analytics',
+        description: 'Include comprehensive thread analytics',
         default: true,
+      },
+      include_recommendations: {
+        type: 'boolean',
+        description: 'Include recommendations for thread optimization',
+        default: true,
+      },
+      thread_analysis: {
+        type: 'boolean',
+        description: 'Perform detailed thread conversation analysis',
+        default: false,
+      },
+      sentiment_analysis: {
+        type: 'boolean',
+        description: 'Perform sentiment analysis on thread replies',
+        default: false,
+      },
+      engagement_tracking: {
+        type: 'boolean',
+        description: 'Track detailed engagement metrics for the thread',
+        default: false,
       },
     },
     required: ['channel', 'ts'],
@@ -60,23 +213,72 @@ export const slackConversationsRepliesTool: MCPTool = {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = {
-        channel: args.channel,
-        ts: args.ts,
-        cursor: args.cursor,
-        latest: args.latest,
-        oldest: args.oldest,
-        limit: Math.min(args.limit || 100, 1000),
-        inclusive: args.inclusive || false,
-        analytics: args.analytics !== false,
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackConversationsRepliesArgs;
+      const client = slackClient.getClient();
+      
+      let threadAnalytics: ThreadAnalytics = {
+        total_replies: 0,
+        unique_participants: 0,
+        thread_depth: 0,
+        reply_distribution: {
+          by_user: {},
+          by_hour: {},
+          by_day: {},
+        },
+        engagement_metrics: {
+          average_reply_length: 0,
+          replies_with_reactions: 0,
+          most_active_participant: null,
+          response_velocity: 0,
+          participation_rate: 0,
+        },
+        conversation_flow: {
+          thread_duration_hours: 0,
+          peak_activity_period: null,
+          conversation_momentum: 'stable',
+          thread_health_score: 0,
+        },
+        content_insights: {
+          total_characters: 0,
+          total_words: 0,
+          average_words_per_reply: 0,
+          replies_with_links: 0,
+          replies_with_mentions: 0,
+          replies_with_files: 0,
+        },
+        recommendations: [],
+        warnings: [],
       };
 
-      // Resolve channel ID
-      const channelId = await slackClient.resolveChannelId(validatedArgs.channel);
+      let warnings: string[] = [];
+      let channelId = validatedArgs.channel;
+      let channelName: string | undefined;
 
-      // Get thread replies
-      const repliesResponse = await slackClient.getClient().conversations.replies({
+      // Step 1: Resolve channel ID if name provided
+      if (validatedArgs.channel.startsWith('#')) {
+        try {
+          const channelNameToResolve = validatedArgs.channel.slice(1);
+          const channelsResult = await client.conversations.list({
+            types: 'public_channel,private_channel',
+            limit: 1000,
+          });
+          
+          if (channelsResult.ok && channelsResult.channels) {
+            const channel = channelsResult.channels.find((ch: any) => ch.name === channelNameToResolve);
+            if (channel && channel.id) {
+              channelId = channel.id;
+              channelName = channel.name || undefined;
+            } else {
+              throw new Error(`Channel #${channelNameToResolve} not found`);
+            }
+          }
+        } catch (error) {
+          throw new Error(`Failed to resolve channel name: ${validatedArgs.channel}`);
+        }
+      }
+
+      // Step 2: Get thread replies
+      const repliesResult = await client.conversations.replies({
         channel: channelId,
         ts: validatedArgs.ts,
         cursor: validatedArgs.cursor,
@@ -86,71 +288,96 @@ export const slackConversationsRepliesTool: MCPTool = {
         inclusive: validatedArgs.inclusive,
       });
 
-      let analytics = {};
-      let recommendations = [];
+      if (!repliesResult.ok) {
+        throw new Error(`Failed to get thread replies: ${repliesResult.error}`);
+      }
 
-      if (validatedArgs.analytics && repliesResponse.messages) {
-        // Generate thread analytics
-        analytics = {
-          thread_intelligence: {
-            total_replies: repliesResponse.messages.length - 1, // Exclude parent message
-            thread_analysis: analyzeThread(repliesResponse.messages),
-            engagement_metrics: calculateThreadEngagement(repliesResponse.messages),
-            participant_analysis: analyzeParticipants(repliesResponse.messages),
-            conversation_flow: analyzeConversationFlow(repliesResponse.messages),
-          },
-          sentiment_intelligence: {
-            thread_sentiment: analyzeThreadSentiment(repliesResponse.messages),
-            engagement_sentiment: analyzeEngagementSentiment(repliesResponse.messages),
-            resolution_indicators: analyzeResolutionIndicators(repliesResponse.messages),
-          },
-          temporal_intelligence: {
-            response_patterns: analyzeResponsePatterns(repliesResponse.messages),
-            activity_timeline: generateActivityTimeline(repliesResponse.messages),
-            engagement_velocity: calculateEngagementVelocity(repliesResponse.messages),
-          },
-          performance_metrics: {
-            response_time_ms: Date.now() - startTime,
-            api_calls_made: 1,
-            data_freshness: 'real-time',
-            pagination_info: {
-              has_more: !!repliesResponse.response_metadata?.next_cursor,
-              cursor: repliesResponse.response_metadata?.next_cursor,
-            },
+      const messages = repliesResult.messages || [];
+      const parentMessage = messages[0]; // First message is always the parent
+      const replies = messages.slice(1); // Rest are replies
+
+      // Step 3: Enhance replies with analysis
+      const enhancedReplies: EnhancedReply[] = replies.map((reply: any, index: number) => {
+        const enhanced: EnhancedReply = {
+          ...reply,
+          metadata: {
+            reply_position: index + 1,
           },
         };
 
-        // Generate AI-powered recommendations
-        recommendations = generateThreadRecommendations(analytics, repliesResponse.messages);
+        if (validatedArgs.thread_analysis && reply.text) {
+          enhanced.metadata!.word_count = reply.text.split(/\s+/).length;
+          enhanced.metadata!.character_count = reply.text.length;
+          enhanced.metadata!.has_links = /https?:\/\//.test(reply.text);
+          enhanced.metadata!.has_mentions = /<@[UW][A-Z0-9]+>/.test(reply.text);
+        }
+
+        if (validatedArgs.sentiment_analysis && reply.text) {
+          enhanced.metadata!.sentiment_score = this.calculateSentiment(reply.text);
+        }
+
+        // Calculate timing metrics
+        if (parentMessage && parentMessage.ts) {
+          const parentTime = parseFloat(parentMessage.ts);
+          const replyTime = parseFloat(reply.ts);
+          enhanced.metadata!.time_since_parent = (replyTime - parentTime) / 60; // Minutes
+          
+          if (index > 0) {
+            const previousReply = replies[index - 1];
+            if (previousReply && previousReply.ts) {
+              const previousReplyTime = parseFloat(previousReply.ts);
+              enhanced.metadata!.time_since_previous = (replyTime - previousReplyTime) / 60; // Minutes
+            }
+          }
+        }
+
+        // Calculate engagement score
+        let engagementScore = 0;
+        if (reply.reactions) engagementScore += reply.reactions.length * 15;
+        if (reply.files) engagementScore += reply.files.length * 20;
+        if (reply.text && reply.text.length > 100) engagementScore += 10;
+        enhanced.metadata!.engagement_score = Math.min(engagementScore, 100);
+
+        return enhanced;
+      });
+
+      // Step 4: Generate analytics
+      if (validatedArgs.include_analytics) {
+        threadAnalytics = this.generateThreadAnalytics(enhancedReplies, parentMessage, validatedArgs);
       }
+
+      // Step 5: Generate recommendations
+      if (validatedArgs.include_recommendations) {
+        threadAnalytics.recommendations = this.generateRecommendations(enhancedReplies, threadAnalytics, validatedArgs);
+      }
+
+      threadAnalytics.warnings = warnings;
 
       const duration = Date.now() - startTime;
       logger.logToolExecution('slack_conversations_replies', args, duration);
 
       return {
         success: true,
-        messages: repliesResponse.messages,
-        response_metadata: repliesResponse.response_metadata,
-        enhancements: validatedArgs.analytics ? {
-          analytics,
-          recommendations,
-          intelligence_categories: [
-            'Thread Intelligence',
-            'Engagement Metrics',
-            'Participant Analysis',
-            'Sentiment Intelligence',
-            'Temporal Intelligence'
-          ],
-          ai_insights: recommendations.length,
-          data_points: Object.keys(analytics).length * 7,
-        } : undefined,
-        metadata: {
+        data: {
+          success: true,
+          messages: enhancedReplies,
           channel_id: channelId,
-          parent_message_ts: validatedArgs.ts,
-          reply_count: repliesResponse.messages?.length ? repliesResponse.messages.length - 1 : 0,
+          channel_name: channelName,
+          thread_ts: validatedArgs.ts,
+          parent_message: parentMessage,
+          has_more: repliesResult.has_more || false,
+          response_metadata: repliesResult.response_metadata,
+          analytics: validatedArgs.include_analytics ? threadAnalytics : undefined,
+          recommendations: validatedArgs.include_recommendations ? threadAnalytics.recommendations : undefined,
+          warnings: warnings.length > 0 ? warnings : undefined,
+        } as ThreadRepliesResult,
+        metadata: {
           execution_time_ms: duration,
-          enhancement_level: validatedArgs.analytics ? '400%' : '100%',
-          api_version: 'enhanced_v2.0.0',
+          operation_type: 'thread_replies',
+          channel_id: channelId,
+          thread_ts: validatedArgs.ts,
+          replies_retrieved: enhancedReplies.length,
+          thread_depth: enhancedReplies.length,
         },
       };
 
@@ -167,350 +394,314 @@ export const slackConversationsRepliesTool: MCPTool = {
     }
   },
 
-  // Helper methods for thread analytics
-  analyzeThread(messages: any[]): any {
-    const parentMessage = messages[0];
-    const replies = messages.slice(1);
+  /**
+   * Calculate basic sentiment score for a message
+   */
+  calculateSentiment(text: string): number {
+    const positiveWords = ['good', 'great', 'excellent', 'awesome', 'love', 'like', 'happy', 'thanks', 'thank you', 'perfect', 'amazing', 'wonderful', 'agree', 'yes', 'correct', 'right'];
+    const negativeWords = ['bad', 'terrible', 'awful', 'hate', 'dislike', 'sad', 'angry', 'frustrated', 'problem', 'issue', 'error', 'fail', 'wrong', 'disagree', 'no'];
     
-    return {
-      parent_message: {
-        user: parentMessage?.user,
-        timestamp: parentMessage?.ts,
-        text_length: parentMessage?.text?.length || 0,
-        has_files: !!(parentMessage?.files?.length),
-        has_attachments: !!(parentMessage?.attachments?.length),
-      },
-      reply_statistics: {
-        total_replies: replies.length,
-        unique_participants: new Set(replies.map(r => r.user).filter(Boolean)).size,
-        avg_reply_length: replies.length > 0 ? Math.round(replies.reduce((sum, r) => sum + (r.text?.length || 0), 0) / replies.length) : 0,
-        replies_with_reactions: replies.filter(r => r.reactions?.length > 0).length,
-      },
-    };
+    const words = text.toLowerCase().split(/\s+/);
+    let score = 0;
+    
+    words.forEach(word => {
+      if (positiveWords.includes(word)) score += 1;
+      if (negativeWords.includes(word)) score -= 1;
+    });
+    
+    // Normalize to -1 to 1 range
+    return Math.max(-1, Math.min(1, score / Math.max(words.length / 10, 1)));
   },
 
-  calculateThreadEngagement(messages: any[]): any {
-    const replies = messages.slice(1);
-    const totalReactions = replies.reduce((sum, r) => sum + (r.reactions?.length || 0), 0);
-    const totalMentions = replies.reduce((sum, r) => sum + (r.text?.match(/<@\w+>/g)?.length || 0), 0);
-    
-    return {
-      engagement_score: replies.length > 0 ? Math.round(((totalReactions + totalMentions) / replies.length) * 100) : 0,
-      reaction_rate: replies.length > 0 ? Math.round((replies.filter(r => r.reactions?.length > 0).length / replies.length) * 100) : 0,
-      mention_density: replies.length > 0 ? Math.round((totalMentions / replies.length) * 100) : 0,
+  /**
+   * Generate comprehensive thread analytics
+   */
+  generateThreadAnalytics(
+    replies: EnhancedReply[], 
+    parentMessage: any,
+    args: SlackConversationsRepliesArgs
+  ): ThreadAnalytics {
+    const analytics: ThreadAnalytics = {
+      total_replies: replies.length,
+      unique_participants: 0,
       thread_depth: replies.length,
+      reply_distribution: {
+        by_user: {},
+        by_hour: {},
+        by_day: {},
+      },
+      engagement_metrics: {
+        average_reply_length: 0,
+        replies_with_reactions: 0,
+        most_active_participant: null,
+        response_velocity: 0,
+        participation_rate: 0,
+      },
+      conversation_flow: {
+        thread_duration_hours: 0,
+        peak_activity_period: null,
+        conversation_momentum: 'stable',
+        thread_health_score: 0,
+      },
+      content_insights: {
+        total_characters: 0,
+        total_words: 0,
+        average_words_per_reply: 0,
+        replies_with_links: 0,
+        replies_with_mentions: 0,
+        replies_with_files: 0,
+      },
+      recommendations: [],
+      warnings: [],
     };
-  },
 
-  analyzeParticipants(messages: any[]): any {
-    const replies = messages.slice(1);
-    const participants = {};
+    if (replies.length === 0) return analytics;
+
+    // Analyze reply distribution
+    const userCounts: Record<string, number> = {};
+    const hourCounts: Record<string, number> = {};
+    const dayCounts: Record<string, number> = {};
     
-    replies.forEach(reply => {
+    let totalCharacters = 0;
+    let totalWords = 0;
+    let repliesWithReactions = 0;
+    let repliesWithLinks = 0;
+    let repliesWithMentions = 0;
+    let repliesWithFiles = 0;
+    let totalResponseTime = 0;
+    let responseCount = 0;
+
+    const timestamps = replies.map(reply => parseFloat(reply.ts)).filter(ts => !isNaN(ts));
+    const parentTime = parentMessage ? parseFloat(parentMessage.ts) : timestamps[0];
+    const minTime = Math.min(parentTime, ...timestamps);
+    const maxTime = Math.max(...timestamps);
+    const threadDurationHours = (maxTime - minTime) / 3600;
+
+    replies.forEach((reply, index) => {
+      // User distribution
       if (reply.user) {
-        participants[reply.user] = (participants[reply.user] || 0) + 1;
+        userCounts[reply.user] = (userCounts[reply.user] || 0) + 1;
+      }
+
+      // Time distribution
+      const date = new Date(parseFloat(reply.ts) * 1000);
+      const hour = date.getHours().toString();
+      const day = date.toLocaleDateString('en-US', { weekday: 'long' });
+      
+      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      dayCounts[day] = (dayCounts[day] || 0) + 1;
+
+      // Content analysis
+      if (reply.text) {
+        totalCharacters += reply.text.length;
+        totalWords += reply.text.split(/\s+/).length;
+        
+        if (reply.metadata?.has_links) repliesWithLinks++;
+        if (reply.metadata?.has_mentions) repliesWithMentions++;
+      }
+
+      if (reply.reactions && reply.reactions.length > 0) repliesWithReactions++;
+      if (reply.files && reply.files.length > 0) repliesWithFiles++;
+
+      // Response velocity calculation
+      if (reply.metadata?.time_since_previous && reply.metadata.time_since_previous > 0) {
+        totalResponseTime += reply.metadata.time_since_previous;
+        responseCount++;
       }
     });
 
-    const participantEntries = Object.entries(participants);
-    const mostActiveParticipant = participantEntries.sort(([,a], [,b]) => (b as number) - (a as number))[0];
-
-    return {
-      unique_participants: participantEntries.length,
-      most_active_participant: mostActiveParticipant ? {
-        user_id: mostActiveParticipant[0],
-        reply_count: mostActiveParticipant[1],
-      } : null,
-      participation_distribution: participantEntries.map(([userId, count]) => ({
-        user_id: userId,
-        reply_count: count,
-        participation_percentage: Math.round((count as number / replies.length) * 100),
-      })),
-      conversation_balance: calculateConversationBalance(participants),
+    // Calculate metrics
+    analytics.unique_participants = Object.keys(userCounts).length;
+    analytics.reply_distribution = {
+      by_user: userCounts,
+      by_hour: hourCounts,
+      by_day: dayCounts,
     };
+
+    analytics.engagement_metrics = {
+      average_reply_length: totalCharacters / replies.length,
+      replies_with_reactions: repliesWithReactions,
+      most_active_participant: Object.entries(userCounts).sort(([,a], [,b]) => b - a)[0]?.[0] || null,
+      response_velocity: responseCount > 0 ? totalResponseTime / responseCount : 0,
+      participation_rate: (analytics.unique_participants / replies.length) * 100,
+    };
+
+    analytics.conversation_flow = {
+      thread_duration_hours: threadDurationHours,
+      peak_activity_period: Object.entries(hourCounts).sort(([,a], [,b]) => b - a)[0]?.[0] || null,
+      conversation_momentum: this.determineConversationMomentum(replies),
+      thread_health_score: this.calculateThreadHealthScore(analytics, replies),
+    };
+
+    analytics.content_insights = {
+      total_characters: totalCharacters,
+      total_words: totalWords,
+      average_words_per_reply: totalWords / replies.length,
+      replies_with_links: repliesWithLinks,
+      replies_with_mentions: repliesWithMentions,
+      replies_with_files: repliesWithFiles,
+    };
+
+    // Sentiment analysis if enabled
+    if (args.sentiment_analysis) {
+      const sentimentScores = replies
+        .map(reply => reply.metadata?.sentiment_score)
+        .filter((score): score is number => score !== undefined);
+      
+      if (sentimentScores.length > 0) {
+        const avgSentiment = sentimentScores.reduce((sum, score) => sum + score, 0) / sentimentScores.length;
+        const positiveReplies = sentimentScores.filter(score => score > 0.1).length;
+        const negativeReplies = sentimentScores.filter(score => score < -0.1).length;
+        const neutralReplies = sentimentScores.length - positiveReplies - negativeReplies;
+        
+        analytics.sentiment_analysis = {
+          overall_sentiment: avgSentiment,
+          sentiment_trend: this.determineSentimentTrend(avgSentiment, positiveReplies, negativeReplies),
+          positive_replies: positiveReplies,
+          negative_replies: negativeReplies,
+          neutral_replies: neutralReplies,
+        };
+      }
+    }
+
+    return analytics;
   },
 
-  calculateConversationBalance(participants: any): string {
-    const counts = Object.values(participants) as number[];
-    if (counts.length === 0) return 'no_participants';
-    if (counts.length === 1) return 'monologue';
+  /**
+   * Determine conversation momentum
+   */
+  determineConversationMomentum(replies: EnhancedReply[]): ThreadAnalytics['conversation_flow']['conversation_momentum'] {
+    if (replies.length < 3) return 'stable';
     
-    const maxCount = Math.max(...counts);
-    const totalCount = counts.reduce((sum, count) => sum + count, 0);
-    const dominanceRatio = maxCount / totalCount;
-    
-    if (dominanceRatio > 0.7) return 'dominated';
-    if (dominanceRatio > 0.5) return 'led';
-    return 'balanced';
-  },
-
-  analyzeConversationFlow(messages: any[]): any {
-    const replies = messages.slice(1);
-    if (replies.length < 2) return { flow_pattern: 'insufficient_data' };
-
-    const timestamps = replies.map(r => parseFloat(r.ts)).sort();
+    const timestamps = replies.map(reply => parseFloat(reply.ts)).sort((a, b) => a - b);
     const intervals = [];
     
     for (let i = 1; i < timestamps.length; i++) {
       intervals.push(timestamps[i] - timestamps[i - 1]);
     }
-
-    const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-    const maxInterval = Math.max(...intervals);
-    const minInterval = Math.min(...intervals);
-
-    return {
-      flow_pattern: determineFlowPattern(intervals),
-      avg_response_time_minutes: Math.round(avgInterval / 60 * 100) / 100,
-      max_gap_minutes: Math.round(maxInterval / 60 * 100) / 100,
-      min_gap_minutes: Math.round(minInterval / 60 * 100) / 100,
-      conversation_pace: avgInterval < 300 ? 'fast' : avgInterval < 1800 ? 'moderate' : 'slow',
-    };
-  },
-
-  determineFlowPattern(intervals: number[]): string {
-    const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-    const variance = intervals.reduce((sum, interval) => sum + Math.pow(interval - avgInterval, 2), 0) / intervals.length;
-    const stdDev = Math.sqrt(variance);
     
-    if (stdDev / avgInterval < 0.5) return 'steady';
-    if (stdDev / avgInterval < 1.0) return 'variable';
-    return 'sporadic';
-  },
-
-  analyzeThreadSentiment(messages: any[]): any {
-    const replies = messages.slice(1);
-    const positiveKeywords = ['thanks', 'great', 'good', 'awesome', 'perfect', 'solved', 'resolved'];
-    const negativeKeywords = ['problem', 'issue', 'error', 'wrong', 'bad', 'failed', 'broken'];
+    const firstHalf = intervals.slice(0, Math.floor(intervals.length / 2));
+    const secondHalf = intervals.slice(Math.floor(intervals.length / 2));
     
-    let positive = 0, negative = 0, neutral = 0;
-
-    replies.forEach(reply => {
-      if (!reply.text) {
-        neutral++;
-        return;
-      }
-
-      const text = reply.text.toLowerCase();
-      const hasPositive = positiveKeywords.some(word => text.includes(word));
-      const hasNegative = negativeKeywords.some(word => text.includes(word));
-
-      if (hasPositive && !hasNegative) positive++;
-      else if (hasNegative && !hasPositive) negative++;
-      else neutral++;
-    });
-
-    return {
-      positive_replies: positive,
-      negative_replies: negative,
-      neutral_replies: neutral,
-      sentiment_trend: calculateSentimentTrend(replies),
-      overall_tone: positive > negative ? 'positive' : negative > positive ? 'negative' : 'neutral',
-    };
-  },
-
-  calculateSentimentTrend(replies: any[]): string {
-    if (replies.length < 3) return 'insufficient_data';
+    const firstAvg = firstHalf.reduce((sum, interval) => sum + interval, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((sum, interval) => sum + interval, 0) / secondHalf.length;
     
-    const firstHalf = replies.slice(0, Math.floor(replies.length / 2));
-    const secondHalf = replies.slice(Math.floor(replies.length / 2));
-    
-    const firstHalfSentiment = getSimpleSentiment(firstHalf);
-    const secondHalfSentiment = getSimpleSentiment(secondHalf);
-    
-    if (secondHalfSentiment > firstHalfSentiment) return 'improving';
-    if (secondHalfSentiment < firstHalfSentiment) return 'declining';
+    if (secondAvg < firstAvg * 0.7) return 'increasing'; // Faster responses = increasing momentum
+    if (secondAvg > firstAvg * 1.5) return 'decreasing'; // Slower responses = decreasing momentum
     return 'stable';
   },
 
-  getSimpleSentiment(messages: any[]): number {
-    const positiveKeywords = ['thanks', 'great', 'good', 'awesome', 'perfect', 'solved'];
-    const negativeKeywords = ['problem', 'issue', 'error', 'wrong', 'bad', 'failed'];
+  /**
+   * Calculate thread health score
+   */
+  calculateThreadHealthScore(analytics: ThreadAnalytics, replies: EnhancedReply[]): number {
+    let score = 50; // Base score
     
-    let score = 0;
-    messages.forEach(msg => {
-      if (msg.text) {
-        const text = msg.text.toLowerCase();
-        positiveKeywords.forEach(word => {
-          if (text.includes(word)) score += 1;
-        });
-        negativeKeywords.forEach(word => {
-          if (text.includes(word)) score -= 1;
-        });
+    // Participation diversity bonus
+    if (analytics.engagement_metrics.participation_rate > 50) score += 20;
+    else if (analytics.engagement_metrics.participation_rate > 25) score += 10;
+    
+    // Engagement bonus
+    const engagementRate = analytics.engagement_metrics.replies_with_reactions / analytics.total_replies;
+    if (engagementRate > 0.3) score += 15;
+    else if (engagementRate > 0.1) score += 8;
+    
+    // Response velocity bonus (faster responses = healthier thread)
+    if (analytics.engagement_metrics.response_velocity < 60) score += 10; // Less than 1 hour
+    else if (analytics.engagement_metrics.response_velocity < 240) score += 5; // Less than 4 hours
+    
+    // Content quality bonus
+    if (analytics.content_insights.average_words_per_reply > 10) score += 5;
+    
+    // Penalties
+    if (analytics.total_replies < 2) score -= 20; // Very short thread
+    if (analytics.conversation_flow.thread_duration_hours > 168) score -= 10; // Very old thread
+    
+    return Math.max(0, Math.min(100, score));
+  },
+
+  /**
+   * Determine sentiment trend
+   */
+  determineSentimentTrend(
+    avgSentiment: number, 
+    positiveReplies: number, 
+    negativeReplies: number
+  ): 'positive' | 'negative' | 'neutral' | 'mixed' {
+    if (avgSentiment > 0.2) return 'positive';
+    if (avgSentiment < -0.2) return 'negative';
+    if (positiveReplies > 0 && negativeReplies > 0) return 'mixed';
+    return 'neutral';
+  },
+
+  /**
+   * Generate recommendations for thread optimization
+   */
+  generateRecommendations(
+    replies: EnhancedReply[], 
+    analytics: ThreadAnalytics, 
+    args: SlackConversationsRepliesArgs
+  ): string[] {
+    const recommendations: string[] = [];
+
+    // Thread health recommendations
+    if (analytics.conversation_flow.thread_health_score < 40) {
+      recommendations.push('Low thread health detected - consider encouraging more participation or clearer communication');
+    } else if (analytics.conversation_flow.thread_health_score > 80) {
+      recommendations.push('Excellent thread health! This conversation pattern could be a model for other discussions');
+    }
+
+    // Participation recommendations
+    if (analytics.engagement_metrics.participation_rate < 30) {
+      recommendations.push('Low participation rate - consider @mentioning specific people to encourage broader engagement');
+    }
+
+    // Response time recommendations
+    if (analytics.engagement_metrics.response_velocity > 480) { // 8 hours
+      recommendations.push('Slow response times detected - consider setting expectations for response timing or using urgent notifications');
+    }
+
+    // Content recommendations
+    if (analytics.content_insights.average_words_per_reply < 5) {
+      recommendations.push('Very short replies detected - encourage more detailed responses for better context');
+    }
+
+    if (analytics.content_insights.average_words_per_reply > 100) {
+      recommendations.push('Very long replies detected - consider breaking complex responses into multiple messages');
+    }
+
+    // Engagement recommendations
+    const engagementRate = analytics.engagement_metrics.replies_with_reactions / analytics.total_replies;
+    if (engagementRate < 0.1) {
+      recommendations.push('Low reaction engagement - encourage team members to use reactions for quick feedback');
+    }
+
+    // Sentiment recommendations
+    if (analytics.sentiment_analysis) {
+      if (analytics.sentiment_analysis.sentiment_trend === 'negative') {
+        recommendations.push('Negative sentiment detected - consider addressing concerns or clarifying misunderstandings');
+      } else if (analytics.sentiment_analysis.sentiment_trend === 'positive') {
+        recommendations.push('Positive sentiment detected - great collaborative discussion!');
       }
-    });
-    
-    return score;
-  },
-
-  analyzeEngagementSentiment(messages: any[]): any {
-    const replies = messages.slice(1);
-    const engagedReplies = replies.filter(r => r.reactions?.length > 0);
-    
-    return {
-      engaged_replies: engagedReplies.length,
-      engagement_rate: replies.length > 0 ? Math.round((engagedReplies.length / replies.length) * 100) : 0,
-      most_reacted_reply: findMostReactedReply(replies),
-    };
-  },
-
-  findMostReactedReply(replies: any[]): any {
-    let mostReacted = null;
-    let maxReactions = 0;
-    
-    replies.forEach(reply => {
-      const reactionCount = reply.reactions?.reduce((sum: number, reaction: any) => sum + reaction.count, 0) || 0;
-      if (reactionCount > maxReactions) {
-        maxReactions = reactionCount;
-        mostReacted = {
-          timestamp: reply.ts,
-          user: reply.user,
-          reaction_count: reactionCount,
-          text_preview: reply.text?.substring(0, 100) || '',
-        };
-      }
-    });
-    
-    return mostReacted;
-  },
-
-  analyzeResolutionIndicators(messages: any[]): any {
-    const replies = messages.slice(1);
-    const resolutionKeywords = ['solved', 'resolved', 'fixed', 'done', 'completed', 'thanks', 'perfect'];
-    const questionKeywords = ['?', 'how', 'what', 'why', 'when', 'where', 'help'];
-    
-    const resolutionIndicators = replies.filter(r => 
-      r.text && resolutionKeywords.some(word => r.text.toLowerCase().includes(word))
-    ).length;
-    
-    const questionIndicators = replies.filter(r => 
-      r.text && questionKeywords.some(word => r.text.toLowerCase().includes(word))
-    ).length;
-    
-    return {
-      resolution_indicators: resolutionIndicators,
-      question_indicators: questionIndicators,
-      likely_resolved: resolutionIndicators > questionIndicators && resolutionIndicators > 0,
-      resolution_confidence: resolutionIndicators > 0 ? Math.min(resolutionIndicators * 25, 100) : 0,
-    };
-  },
-
-  analyzeResponsePatterns(messages: any[]): any {
-    const replies = messages.slice(1);
-    if (replies.length < 2) return { pattern: 'insufficient_data' };
-
-    const timestamps = replies.map(r => parseFloat(r.ts));
-    const intervals = [];
-    
-    for (let i = 1; i < timestamps.length; i++) {
-      intervals.push(timestamps[i] - timestamps[i - 1]);
     }
 
-    return {
-      response_pattern: identifyResponsePattern(intervals),
-      peak_activity_period: findPeakActivityPeriod(timestamps),
-      response_consistency: calculateResponseConsistency(intervals),
-    };
-  },
-
-  identifyResponsePattern(intervals: number[]): string {
-    const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-    
-    if (avgInterval < 300) return 'rapid_fire'; // < 5 minutes
-    if (avgInterval < 1800) return 'conversational'; // < 30 minutes
-    if (avgInterval < 7200) return 'periodic'; // < 2 hours
-    return 'sporadic';
-  },
-
-  findPeakActivityPeriod(timestamps: number[]): any {
-    const hours = timestamps.map(ts => new Date(ts * 1000).getHours());
-    const hourCounts = {};
-    
-    hours.forEach(hour => {
-      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-    });
-    
-    const peakHour = Object.entries(hourCounts).sort(([,a], [,b]) => (b as number) - (a as number))[0];
-    
-    return peakHour ? {
-      hour: parseInt(peakHour[0]),
-      activity_count: peakHour[1],
-    } : null;
-  },
-
-  calculateResponseConsistency(intervals: number[]): number {
-    if (intervals.length < 2) return 0;
-    
-    const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-    const variance = intervals.reduce((sum, interval) => sum + Math.pow(interval - avgInterval, 2), 0) / intervals.length;
-    const stdDev = Math.sqrt(variance);
-    
-    // Lower coefficient of variation = higher consistency
-    const coefficientOfVariation = stdDev / avgInterval;
-    return Math.max(0, Math.round((1 - Math.min(coefficientOfVariation, 1)) * 100));
-  },
-
-  generateActivityTimeline(messages: any[]): any {
-    const replies = messages.slice(1);
-    if (replies.length === 0) return { timeline: [] };
-
-    const timeline = replies.map((reply, index) => ({
-      sequence: index + 1,
-      timestamp: reply.ts,
-      user: reply.user,
-      text_length: reply.text?.length || 0,
-      has_reactions: !!(reply.reactions?.length),
-      reaction_count: reply.reactions?.reduce((sum: number, r: any) => sum + r.count, 0) || 0,
-    }));
-
-    return {
-      timeline,
-      total_duration_hours: replies.length > 1 ? 
-        Math.round((parseFloat(replies[replies.length - 1].ts) - parseFloat(replies[0].ts)) / 3600 * 100) / 100 : 0,
-    };
-  },
-
-  calculateEngagementVelocity(messages: any[]): any {
-    const replies = messages.slice(1);
-    if (replies.length < 2) return { velocity: 0 };
-
-    const timeSpan = parseFloat(replies[replies.length - 1].ts) - parseFloat(replies[0].ts);
-    const velocity = timeSpan > 0 ? replies.length / (timeSpan / 3600) : 0; // replies per hour
-
-    return {
-      velocity: Math.round(velocity * 100) / 100,
-      velocity_category: velocity > 5 ? 'high' : velocity > 1 ? 'moderate' : 'low',
-      sustained_engagement: velocity > 0.5 && replies.length > 3,
-    };
-  },
-
-  generateThreadRecommendations(analytics: any, messages: any[]): string[] {
-    const recommendations = [];
-
-    if (analytics.thread_intelligence?.engagement_metrics?.engagement_score < 20) {
-      recommendations.push('Low thread engagement - consider asking follow-up questions to encourage participation');
+    // Thread length recommendations
+    if (analytics.total_replies > 50) {
+      recommendations.push('Very long thread - consider summarizing key points or creating a new thread for continued discussion');
     }
 
-    if (analytics.thread_intelligence?.participant_analysis?.conversation_balance === 'dominated') {
-      recommendations.push('Conversation is dominated by one participant - encourage broader participation');
+    // Momentum recommendations
+    if (analytics.conversation_flow.conversation_momentum === 'decreasing') {
+      recommendations.push('Conversation momentum is decreasing - consider asking follow-up questions to re-engage participants');
     }
 
-    if (analytics.sentiment_intelligence?.resolution_indicators?.likely_resolved) {
-      recommendations.push('Thread appears resolved - consider marking as complete or summarizing outcomes');
-    }
-
-    if (analytics.temporal_intelligence?.engagement_velocity?.velocity < 0.5) {
-      recommendations.push('Low engagement velocity - consider strategies to maintain conversation momentum');
-    }
-
-    if (analytics.sentiment_intelligence?.thread_sentiment?.sentiment_trend === 'declining') {
-      recommendations.push('Sentiment is declining - consider addressing concerns or clarifying issues');
-    }
-
-    if (analytics.thread_intelligence?.thread_analysis?.reply_statistics?.total_replies === 0) {
-      recommendations.push('No replies yet - consider rephrasing the question or adding more context');
+    // General recommendations
+    if (recommendations.length === 0) {
+      recommendations.push('Thread looks healthy! Continue encouraging active participation and clear communication');
     }
 
     return recommendations;
   },
 };
+
+export default slackConversationsRepliesTool;

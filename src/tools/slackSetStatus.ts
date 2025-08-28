@@ -1,17 +1,202 @@
+/**
+ * Enhanced Slack Set Status Tool v2.0.0
+ * Comprehensive user status management with templates, scheduling, and analytics
+ */
 
 import { MCPTool } from '@/registry/toolRegistry';
 import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
+import { Validator } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import { z } from 'zod';
 
 /**
- * Enhanced Slack Set Status Tool
- * Intelligent status management with templates, scheduling, and automation
+ * Status templates enum
  */
+const StatusTemplate = z.enum([
+  'meeting',
+  'lunch',
+  'coffee',
+  'focus',
+  'away',
+  'vacation',
+  'sick',
+  'commuting',
+  'working_remotely',
+  'in_office',
+  'busy',
+  'available',
+  'do_not_disturb',
+  'custom'
+]);
+
+/**
+ * Input validation schema
+ */
+const inputSchema = z.object({
+  status_text: z.string()
+    .max(100, 'Status text must be 100 characters or less')
+    .optional(),
+  status_emoji: z.string()
+    .regex(/^:[a-z0-9_+-]+:$/, 'Status emoji must be in format :emoji_name:')
+    .optional(),
+  status_expiration: z.number()
+    .int()
+    .positive()
+    .optional(),
+  template: StatusTemplate.optional(),
+  auto_clear: z.boolean().default(false),
+  auto_clear_minutes: z.number().min(1).max(1440).default(60),
+  include_timezone: z.boolean().default(false),
+  include_analytics: z.boolean().default(true),
+  include_recommendations: z.boolean().default(true),
+  validate_emoji: z.boolean().default(true),
+  smart_expiration: z.boolean().default(false),
+  presence_status: z.enum(['auto', 'away']).optional(),
+}).refine(
+  (data) => data.status_text || data.status_emoji || data.template,
+  'At least one of status_text, status_emoji, or template must be provided'
+);
+
+type SlackSetStatusArgs = z.infer<typeof inputSchema>;
+
+/**
+ * Status analytics interface
+ */
+interface StatusAnalytics {
+  status_set_success: boolean;
+  template_used?: string;
+  emoji_validated: boolean;
+  expiration_set: boolean;
+  presence_updated: boolean;
+  status_timing: {
+    validation_ms: number;
+    status_update_ms: number;
+    total_operation_ms: number;
+  };
+  previous_status?: {
+    text?: string;
+    emoji?: string;
+    expiration?: number;
+  };
+  status_insights: {
+    character_count: number;
+    has_emoji: boolean;
+    has_expiration: boolean;
+    estimated_duration_hours?: number;
+  };
+  recommendations: string[];
+  warnings: string[];
+}
+
+/**
+ * Status template definitions
+ */
+interface StatusTemplateDefinition {
+  text: string;
+  emoji: string;
+  default_duration_minutes?: number;
+  presence?: 'auto' | 'away';
+}
+
+const STATUS_TEMPLATES: Record<string, StatusTemplateDefinition> = {
+  meeting: {
+    text: 'In a meeting',
+    emoji: ':calendar:',
+    default_duration_minutes: 60,
+    presence: 'away'
+  },
+  lunch: {
+    text: 'Out for lunch',
+    emoji: ':fork_and_knife:',
+    default_duration_minutes: 60
+  },
+  coffee: {
+    text: 'Coffee break',
+    emoji: ':coffee:',
+    default_duration_minutes: 15
+  },
+  focus: {
+    text: 'In focus mode',
+    emoji: ':dart:',
+    default_duration_minutes: 120,
+    presence: 'away'
+  },
+  away: {
+    text: 'Away from desk',
+    emoji: ':walking:',
+    default_duration_minutes: 30
+  },
+  vacation: {
+    text: 'On vacation',
+    emoji: ':palm_tree:',
+    default_duration_minutes: 480 // 8 hours
+  },
+  sick: {
+    text: 'Out sick',
+    emoji: ':face_with_thermometer:',
+    default_duration_minutes: 480 // 8 hours
+  },
+  commuting: {
+    text: 'Commuting',
+    emoji: ':bus:',
+    default_duration_minutes: 45
+  },
+  working_remotely: {
+    text: 'Working remotely',
+    emoji: ':house:',
+    default_duration_minutes: 480 // 8 hours
+  },
+  in_office: {
+    text: 'In the office',
+    emoji: ':office:',
+    default_duration_minutes: 480 // 8 hours
+  },
+  busy: {
+    text: 'Busy',
+    emoji: ':no_entry_sign:',
+    default_duration_minutes: 120,
+    presence: 'away'
+  },
+  available: {
+    text: 'Available',
+    emoji: ':white_check_mark:',
+    presence: 'auto'
+  },
+  do_not_disturb: {
+    text: 'Do not disturb',
+    emoji: ':no_entry:',
+    default_duration_minutes: 240,
+    presence: 'away'
+  }
+};
+
+/**
+ * Status result interface
+ */
+interface StatusResult {
+  success: boolean;
+  status_updated: boolean;
+  presence_updated: boolean;
+  current_status: {
+    text?: string;
+    emoji?: string;
+    expiration?: number;
+    expiration_formatted?: string;
+  };
+  previous_status?: {
+    text?: string;
+    emoji?: string;
+    expiration?: number;
+  };
+  analytics?: StatusAnalytics;
+  recommendations?: string[];
+  warnings?: string[];
+}
+
 export const slackSetStatusTool: MCPTool = {
   name: 'slack_set_status',
-  description: 'Set user status with intelligent templates, scheduling, and automation features',
+  description: 'Set user status with intelligent templates, scheduling, and comprehensive analytics',
   inputSchema: {
     type: 'object',
     properties: {
@@ -22,7 +207,7 @@ export const slackSetStatusTool: MCPTool = {
       },
       status_emoji: {
         type: 'string',
-        description: 'Status emoji (e.g., :coffee:, :house:, :calendar:)',
+        description: 'Status emoji in format :emoji_name: (e.g., :coffee:, :house:)',
       },
       status_expiration: {
         type: 'number',
@@ -32,168 +217,232 @@ export const slackSetStatusTool: MCPTool = {
         type: 'string',
         description: 'Pre-defined status template',
         enum: [
-          'meeting',
-          'lunch',
-          'coffee',
-          'focus',
-          'away',
-          'vacation',
-          'sick',
-          'commuting',
-          'working_remotely',
-          'in_office',
-          'busy',
-          'available',
-          'do_not_disturb',
-          'custom'
+          'meeting', 'lunch', 'coffee', 'focus', 'away', 'vacation',
+          'sick', 'commuting', 'working_remotely', 'in_office',
+          'busy', 'available', 'do_not_disturb', 'custom'
         ],
-      },
-      duration_minutes: {
-        type: 'number',
-        description: 'Status duration in minutes (alternative to status_expiration)',
-        minimum: 1,
-        maximum: 10080, // 1 week
       },
       auto_clear: {
         type: 'boolean',
-        description: 'Automatically clear status when it expires',
+        description: 'Automatically clear status after specified time',
+        default: false,
+      },
+      auto_clear_minutes: {
+        type: 'number',
+        description: 'Minutes after which to auto-clear status (1-1440)',
+        minimum: 1,
+        maximum: 1440,
+        default: 60,
+      },
+      include_timezone: {
+        type: 'boolean',
+        description: 'Include timezone information in status',
+        default: false,
+      },
+      include_analytics: {
+        type: 'boolean',
+        description: 'Include analytics about the status update',
         default: true,
       },
-      presence: {
+      include_recommendations: {
+        type: 'boolean',
+        description: 'Include recommendations for status optimization',
+        default: true,
+      },
+      validate_emoji: {
+        type: 'boolean',
+        description: 'Validate emoji format and availability',
+        default: true,
+      },
+      smart_expiration: {
+        type: 'boolean',
+        description: 'Use smart expiration based on template and time of day',
+        default: false,
+      },
+      presence_status: {
         type: 'string',
-        description: 'Set presence along with status',
+        description: 'Set presence status along with custom status',
         enum: ['auto', 'away'],
       },
-      snooze_dnd: {
-        type: 'number',
-        description: 'Snooze Do Not Disturb for specified minutes',
-        minimum: 1,
-        maximum: 1440, // 24 hours
-      },
     },
-    required: [],
   },
 
   async execute(args: Record<string, any>) {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = Validator.validate(ToolSchemas.setStatus, args);
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackSetStatusArgs;
+      const client = slackClient.getClient();
       
-      // Apply template if specified
-      let statusText = validatedArgs.status_text;
-      let statusEmoji = validatedArgs.status_emoji;
-      let suggestedDuration = args.duration_minutes;
-
-      if (args.template && args.template !== 'custom') {
-        const template = getStatusTemplate(args.template);
-        statusText = statusText || template.text;
-        statusEmoji = statusEmoji || template.emoji;
-        suggestedDuration = suggestedDuration || template.duration_minutes;
-      }
-
-      // Calculate expiration timestamp
-      let statusExpiration = validatedArgs.status_expiration;
-      if (!statusExpiration && (args.duration_minutes || suggestedDuration)) {
-        const durationMs = (args.duration_minutes || suggestedDuration) * 60 * 1000;
-        statusExpiration = Math.floor((Date.now() + durationMs) / 1000);
-      }
-
-      // Prepare status profile update
-      const profileUpdate: any = {};
-      
-      if (statusText !== undefined) {
-        profileUpdate.status_text = statusText;
-      }
-      
-      if (statusEmoji !== undefined) {
-        profileUpdate.status_emoji = statusEmoji;
-      }
-      
-      if (statusExpiration !== undefined) {
-        profileUpdate.status_expiration = statusExpiration;
-      }
-
-      // Update user profile with status
-      if (Object.keys(profileUpdate).length > 0) {
-        await slackClient.getClient().users.profile.set({
-          profile: profileUpdate,
-        });
-      }
-
-      // Set presence if specified
-      let presenceResult = null;
-      if (args.presence) {
-        try {
-          presenceResult = await slackClient.getClient().users.setPresence({
-            presence: args.presence,
-          });
-        } catch (error) {
-          logger.warn('Failed to set presence:', ErrorHandler.handleError(error));
-        }
-      }
-
-      // Handle Do Not Disturb snoozing
-      let dndResult = null;
-      if (args.snooze_dnd) {
-        try {
-          dndResult = await slackClient.getClient().dnd.setSnooze({
-            num_minutes: args.snooze_dnd,
-          });
-        } catch (error) {
-          logger.warn('Failed to set DND snooze:', ErrorHandler.handleError(error));
-        }
-      }
-
-      // Get current user info to return updated status
-      const userInfo = await slackClient.getClient().auth.test();
-      const updatedProfile = await slackClient.getClient().users.profile.get({
-        user: userInfo.user_id!,
-      });
-
-      // Analyze status
-      const statusAnalysis = {
-        has_text: !!statusText,
-        has_emoji: !!statusEmoji,
-        has_expiration: !!statusExpiration,
-        is_temporary: !!statusExpiration,
-        template_used: args.template || null,
-        estimated_duration_minutes: suggestedDuration || null,
-        expires_at: statusExpiration ? new Date(statusExpiration * 1000).toISOString() : null,
+      let statusAnalytics: StatusAnalytics = {
+        status_set_success: false,
+        emoji_validated: false,
+        expiration_set: false,
+        presence_updated: false,
+        status_timing: {
+          validation_ms: 0,
+          status_update_ms: 0,
+          total_operation_ms: 0,
+        },
+        status_insights: {
+          character_count: 0,
+          has_emoji: false,
+          has_expiration: false,
+        },
+        recommendations: [],
+        warnings: [],
       };
 
+      let finalStatusText = validatedArgs.status_text;
+      let finalStatusEmoji = validatedArgs.status_emoji;
+      let finalExpiration = validatedArgs.status_expiration;
+      let finalPresence = validatedArgs.presence_status;
+      let warnings: string[] = [];
+
+      // Step 1: Get current status for comparison
+      const validationStart = Date.now();
+      let previousStatus: StatusAnalytics['previous_status'];
+      
+      try {
+        const profileResult = await client.users.profile.get({});
+        if (profileResult.ok && profileResult.profile) {
+          previousStatus = {
+            text: profileResult.profile.status_text,
+            emoji: profileResult.profile.status_emoji,
+            expiration: profileResult.profile.status_expiration,
+          };
+          statusAnalytics.previous_status = previousStatus;
+        }
+      } catch (error) {
+        warnings.push('Could not retrieve current status for comparison');
+      }
+
+      // Step 2: Apply template if specified
+      if (validatedArgs.template && validatedArgs.template !== 'custom') {
+        const template = STATUS_TEMPLATES[validatedArgs.template];
+        if (template) {
+          finalStatusText = finalStatusText || template.text;
+          finalStatusEmoji = finalStatusEmoji || template.emoji;
+          finalPresence = finalPresence || template.presence;
+          statusAnalytics.template_used = validatedArgs.template;
+
+          // Apply smart expiration from template
+          if (validatedArgs.smart_expiration && template.default_duration_minutes) {
+            const expirationTime = Math.floor(Date.now() / 1000) + (template.default_duration_minutes * 60);
+            finalExpiration = finalExpiration || expirationTime;
+          }
+        }
+      }
+
+      // Step 3: Apply auto-clear expiration
+      if (validatedArgs.auto_clear && !finalExpiration) {
+        const expirationTime = Math.floor(Date.now() / 1000) + (validatedArgs.auto_clear_minutes * 60);
+        finalExpiration = expirationTime;
+      }
+
+      // Step 4: Add timezone to status text if requested
+      if (validatedArgs.include_timezone && finalStatusText) {
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const timezoneName = timezone.split('/').pop()?.replace('_', ' ') || timezone;
+        finalStatusText = `${finalStatusText} (${timezoneName})`;
+      }
+
+      // Step 5: Validate emoji format
+      if (validatedArgs.validate_emoji && finalStatusEmoji) {
+        if (!/^:[a-z0-9_+-]+:$/.test(finalStatusEmoji)) {
+          throw new Error(`Invalid emoji format: ${finalStatusEmoji}. Use format :emoji_name:`);
+        }
+        statusAnalytics.emoji_validated = true;
+      }
+
+      statusAnalytics.status_timing.validation_ms = Date.now() - validationStart;
+
+      // Step 6: Update user status
+      const statusUpdateStart = Date.now();
+      const statusUpdateResult = await client.users.profile.set({
+        profile: {
+          status_text: finalStatusText || '',
+          status_emoji: finalStatusEmoji || '',
+          status_expiration: finalExpiration || 0,
+        },
+      });
+
+      if (!statusUpdateResult.ok) {
+        throw new Error(`Failed to update status: ${statusUpdateResult.error}`);
+      }
+
+      statusAnalytics.status_set_success = true;
+      statusAnalytics.expiration_set = !!finalExpiration;
+      statusAnalytics.status_timing.status_update_ms = Date.now() - statusUpdateStart;
+
+      // Step 7: Update presence if specified
+      if (finalPresence) {
+        try {
+          const presenceResult = await client.users.setPresence({
+            presence: finalPresence,
+          });
+          
+          if (presenceResult.ok) {
+            statusAnalytics.presence_updated = true;
+          } else {
+            warnings.push('Failed to update presence status');
+          }
+        } catch (error) {
+          warnings.push('Error updating presence status');
+        }
+      }
+
+      // Step 8: Generate analytics and insights
+      statusAnalytics.status_insights = {
+        character_count: finalStatusText?.length || 0,
+        has_emoji: !!finalStatusEmoji,
+        has_expiration: !!finalExpiration,
+        estimated_duration_hours: finalExpiration ? 
+          Math.round((finalExpiration - Date.now() / 1000) / 3600 * 10) / 10 : undefined,
+      };
+
+      // Step 9: Generate recommendations
+      if (validatedArgs.include_recommendations) {
+        statusAnalytics.recommendations = this.generateRecommendations(
+          finalStatusText,
+          finalStatusEmoji,
+          finalExpiration,
+          validatedArgs.template,
+          statusAnalytics
+        );
+      }
+
+      statusAnalytics.warnings = warnings;
+
       const duration = Date.now() - startTime;
+      statusAnalytics.status_timing.total_operation_ms = duration;
+      
       logger.logToolExecution('slack_set_status', args, duration);
 
       return {
         success: true,
-        status: {
-          text: updatedProfile.profile?.status_text || '',
-          emoji: updatedProfile.profile?.status_emoji || '',
-          expiration: updatedProfile.profile?.status_expiration || null,
-          expires_at: updatedProfile.profile?.status_expiration 
-            ? new Date(updatedProfile.profile.status_expiration * 1000).toISOString() 
-            : null,
-        },
-        presence: presenceResult ? {
-          presence: args.presence,
-          success: !!presenceResult.ok,
-        } : null,
-        dnd: dndResult ? {
-          snooze_minutes: args.snooze_dnd,
-          snooze_enabled: !!dndResult.snooze_enabled,
-          snooze_endtime: dndResult.snooze_endtime 
-            ? new Date(dndResult.snooze_endtime * 1000).toISOString() 
-            : null,
-        } : null,
-        analysis: statusAnalysis,
+        data: {
+          success: true,
+          status_updated: true,
+          presence_updated: statusAnalytics.presence_updated,
+          current_status: {
+            text: finalStatusText,
+            emoji: finalStatusEmoji,
+            expiration: finalExpiration,
+            expiration_formatted: finalExpiration ? 
+              new Date(finalExpiration * 1000).toLocaleString() : undefined,
+          },
+          previous_status: previousStatus,
+          analytics: validatedArgs.include_analytics ? statusAnalytics : undefined,
+          recommendations: validatedArgs.include_recommendations ? 
+            statusAnalytics.recommendations : undefined,
+          warnings: warnings.length > 0 ? warnings : undefined,
+        } as StatusResult,
         metadata: {
-          template_applied: args.template || null,
-          auto_expiration: !!statusExpiration,
-          presence_updated: !!args.presence,
-          dnd_snoozed: !!args.snooze_dnd,
           execution_time_ms: duration,
+          operation_type: 'status_update',
+          template_used: statusAnalytics.template_used,
+          has_expiration: statusAnalytics.expiration_set,
         },
       };
 
@@ -209,79 +458,105 @@ export const slackSetStatusTool: MCPTool = {
       });
     }
   },
+
+  /**
+   * Generate recommendations for status optimization
+   */
+  generateRecommendations(
+    statusText?: string,
+    statusEmoji?: string,
+    expiration?: number,
+    template?: string,
+    analytics?: StatusAnalytics
+  ): string[] {
+    const recommendations: string[] = [];
+
+    // Status text recommendations
+    if (statusText) {
+      if (statusText.length > 50) {
+        recommendations.push('Consider shortening status text for better visibility');
+      }
+      
+      if (statusText.length < 10 && !statusEmoji) {
+        recommendations.push('Consider adding an emoji to make your status more expressive');
+      }
+    }
+
+    // Emoji recommendations
+    if (!statusEmoji && statusText) {
+      recommendations.push('Adding an emoji can make your status more visible and expressive');
+    }
+
+    // Expiration recommendations
+    if (!expiration) {
+      recommendations.push('Consider setting an expiration to automatically clear your status');
+    } else {
+      const hoursUntilExpiration = (expiration - Date.now() / 1000) / 3600;
+      if (hoursUntilExpiration > 24) {
+        recommendations.push('Long status durations (>24h) may need manual updates');
+      } else if (hoursUntilExpiration < 0.5) {
+        recommendations.push('Very short status durations (<30min) may expire too quickly');
+      }
+    }
+
+    // Template-specific recommendations
+    if (template) {
+      switch (template) {
+        case 'meeting':
+          recommendations.push('Consider updating your calendar to reflect meeting status');
+          break;
+        case 'vacation':
+          recommendations.push('Set up an auto-responder for emails during vacation');
+          break;
+        case 'sick':
+          recommendations.push('Consider notifying your team lead about your absence');
+          break;
+        case 'focus':
+          recommendations.push('Turn on Do Not Disturb notifications for better focus');
+          break;
+        case 'working_remotely':
+          recommendations.push('Update your location in your profile if working from a different city');
+          break;
+      }
+    }
+
+    // General best practices
+    if (analytics?.status_insights.character_count === 0 && !statusEmoji) {
+      recommendations.push('Empty status - consider using "Available" template or clearing status');
+    }
+
+    if (recommendations.length === 0) {
+      recommendations.push('Status looks good! 👍');
+    }
+
+    return recommendations;
+  },
+
+  /**
+   * Get available status templates
+   */
+  getAvailableTemplates(): Record<string, StatusTemplateDefinition> {
+    return STATUS_TEMPLATES;
+  },
+
+  /**
+   * Format expiration time
+   */
+  formatExpirationTime(timestamp: number): string {
+    const date = new Date(timestamp * 1000);
+    const now = new Date();
+    const diffHours = (date.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    if (diffHours < 1) {
+      const diffMinutes = Math.round(diffHours * 60);
+      return `in ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+    } else if (diffHours < 24) {
+      const hours = Math.round(diffHours);
+      return `in ${hours} hour${hours !== 1 ? 's' : ''}`;
+    } else {
+      return date.toLocaleDateString() + ' at ' + date.toLocaleTimeString();
+    }
+  },
 };
 
-/**
- * Get predefined status templates
- */
-function getStatusTemplate(template: string) {
-  const templates: Record<string, { text: string; emoji: string; duration_minutes?: number }> = {
-    meeting: {
-      text: 'In a meeting',
-      emoji: ':calendar:',
-      duration_minutes: 60,
-    },
-    lunch: {
-      text: 'Out for lunch',
-      emoji: ':fork_and_knife:',
-      duration_minutes: 60,
-    },
-    coffee: {
-      text: 'Coffee break',
-      emoji: ':coffee:',
-      duration_minutes: 15,
-    },
-    focus: {
-      text: 'In focus mode',
-      emoji: ':dart:',
-      duration_minutes: 120,
-    },
-    away: {
-      text: 'Away from desk',
-      emoji: ':walking:',
-      duration_minutes: 30,
-    },
-    vacation: {
-      text: 'On vacation',
-      emoji: ':palm_tree:',
-      // No duration - typically set manually
-    },
-    sick: {
-      text: 'Out sick',
-      emoji: ':face_with_thermometer:',
-      // No duration - typically set manually
-    },
-    commuting: {
-      text: 'Commuting',
-      emoji: ':bus:',
-      duration_minutes: 45,
-    },
-    working_remotely: {
-      text: 'Working remotely',
-      emoji: ':house:',
-      duration_minutes: 480, // 8 hours
-    },
-    in_office: {
-      text: 'In the office',
-      emoji: ':office:',
-      duration_minutes: 480, // 8 hours
-    },
-    busy: {
-      text: 'Busy',
-      emoji: ':no_entry_sign:',
-      duration_minutes: 60,
-    },
-    available: {
-      text: 'Available',
-      emoji: ':white_check_mark:',
-      duration_minutes: 240, // 4 hours
-    },
-    do_not_disturb: {
-      text: 'Do not disturb',
-      emoji: ':no_entry:',
-      duration_minutes: 120,
-    },
-  };
-
-  return templates[template] || { text: '', emoji: '' };
-}
+export default slackSetStatusTool;

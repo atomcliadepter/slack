@@ -1,5 +1,5 @@
 
-import { slackCreateChannelTool } from '../../../../src/tools/slackCreateChannel';
+import { slackCreateChannelTool } from '../../../src/tools/slackCreateChannel';
 import { skipIntegration, mockInvalidArgs, generateTestId } from './testUtils';
 
 const describeOrSkip = skipIntegration ? describe.skip : describe;

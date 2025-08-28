@@ -21,6 +21,10 @@
     "test:performance": "jest --config tests/config/jest.config.ts tests/performance --runInBand",
     "test:security": "jest --config tests/config/jest.config.ts tests/security --runInBand",
     "test:legacy": "jest --config jest.config.js",
+    "test:real": "jest --config tests/config/jest.realEnvironment.config.ts",
+    "test:real:verbose": "jest --config tests/config/jest.realEnvironment.config.ts --verbose",
+    "test:real:watch": "jest --config tests/config/jest.realEnvironment.config.ts --watch",
+    "test:real:debug": "jest --config tests/config/jest.realEnvironment.config.ts --runInBand --detectOpenHandles --verbose",
     "lint": "eslint src/**/*.ts tests/**/*.ts",
     "lint:fix": "eslint src/**/*.ts tests/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts tests/**/*.ts",
@@ -35,7 +39,9 @@
     "validate:env": "node -e \"require('dotenv').config(); console.log('Environment validated')\"",
     "setup:test": "npm run validate:env && echo 'Test environment ready'",
     "report:coverage": "open tests/reports/coverage/lcov-report/index.html",
-    "report:tests": "open tests/reports/html/test-report.html"
+    "report:tests": "open tests/reports/html/test-report.html",
+    "start:prod": "node scripts/start-production.js",
+    "deploy": "./scripts/deploy-now.sh"
   },
   "keywords": [
     "slack",

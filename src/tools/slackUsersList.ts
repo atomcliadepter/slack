@@ -1,20 +1,237 @@
+/**
+ * Enhanced Slack Users List Tool v2.0.0 - THE FINAL TOOL!
+ * Comprehensive user listing with advanced filtering, analytics, and workspace insights
+ */
 
 import { MCPTool } from '@/registry/toolRegistry';
 import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
+import { Validator } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import { z } from 'zod';
+
+/**
+ * Input validation schema
+ */
+const inputSchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.number().min(1).max(1000).default(100),
+  include_locale: z.boolean().default(false),
+  include_analytics: z.boolean().default(true),
+  include_recommendations: z.boolean().default(true),
+  include_presence: z.boolean().default(false),
+  filter_by_name: z.string().optional(),
+  filter_by_title: z.string().optional(),
+  filter_by_status: z.enum(['active', 'inactive', 'deleted', 'all']).default('all'),
+  filter_by_user_type: z.enum(['human', 'bot', 'app', 'all']).default('all'),
+  sort_by: z.enum(['name', 'real_name', 'created', 'title']).default('name'),
+  detailed_analysis: z.boolean().default(false),
+});
+
+type SlackUsersListArgs = z.infer<typeof inputSchema>;
+
+/**
+ * Workspace analytics interface
+ */
+interface WorkspaceAnalytics {
+  workspace_demographics: {
+    total_users: number;
+    active_users: number;
+    inactive_users: number;
+    deleted_users: number;
+    bot_users: number;
+    human_users: number;
+    app_users: number;
+  };
+  user_distribution: {
+    by_role: Record<string, number>;
+    by_status: Record<string, number>;
+    by_user_type: Record<string, number>;
+    by_timezone: Record<string, number>;
+  };
+  engagement_metrics: {
+    users_with_profiles: number;
+    users_with_status: number;
+    users_with_2fa: number;
+    users_with_confirmed_email: number;
+    profile_completeness_average: number;
+    security_score_average: number;
+  };
+  workspace_insights: {
+    admin_count: number;
+    owner_count: number;
+    guest_count: number;
+    enterprise_users: number;
+    timezone_diversity_score: number; // 0-100
+    profile_health_score: number; // 0-100
+    security_health_score: number; // 0-100
+  };
+  activity_patterns: {
+    most_common_timezone: string | null;
+    profile_completion_rate: number; // 0-100
+    security_adoption_rate: number; // 0-100
+    active_user_percentage: number; // 0-100
+  };
+  recommendations: string[];
+  warnings: string[];
+}
+
+/**
+ * Enhanced user interface
+ */
+interface EnhancedUser {
+  id: string;
+  team_id?: string;
+  name?: string;
+  deleted?: boolean;
+  color?: string;
+  real_name?: string;
+  tz?: string;
+  tz_label?: string;
+  tz_offset?: number;
+  profile?: {
+    title?: string;
+    phone?: string;
+    skype?: string;
+    real_name?: string;
+    real_name_normalized?: string;
+    display_name?: string;
+    display_name_normalized?: string;
+    fields?: Record<string, any>;
+    status_text?: string;
+    status_emoji?: string;
+    status_expiration?: number;
+    avatar_hash?: string;
+    image_original?: string;
+    is_custom_image?: boolean;
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    image_24?: string;
+    image_32?: string;
+    image_48?: string;
+    image_72?: string;
+    image_192?: string;
+    image_512?: string;
+    image_1024?: string;
+    status_text_canonical?: string;
+    team?: string;
+  };
+  is_admin?: boolean;
+  is_owner?: boolean;
+  is_primary_owner?: boolean;
+  is_restricted?: boolean;
+  is_ultra_restricted?: boolean;
+  is_bot?: boolean;
+  is_app_user?: boolean;
+  is_workflow_bot?: boolean;
+  updated?: number;
+  is_email_confirmed?: boolean;
+  who_can_share_contact_card?: string;
+  locale?: string;
+  presence?: string;
+  enterprise_user?: {
+    id?: string;
+    enterprise_id?: string;
+    enterprise_name?: string;
+    is_admin?: boolean;
+    is_owner?: boolean;
+    teams?: string[];
+  };
+  has_2fa?: boolean;
+  two_factor_type?: string;
+  metadata?: {
+    profile_completeness_score?: number;
+    security_score?: number;
+    engagement_level?: 'very_high' | 'high' | 'medium' | 'low' | 'very_low';
+    account_type?: 'human' | 'bot' | 'app' | 'workflow';
+    permissions_level?: 'owner' | 'admin' | 'member' | 'guest' | 'restricted';
+  };
+}
+
+/**
+ * Users list result interface
+ */
+interface UsersListResult {
+  success: boolean;
+  members: EnhancedUser[];
+  response_metadata?: {
+    next_cursor?: string;
+  };
+  cache_ts?: number;
+  analytics?: WorkspaceAnalytics;
+  recommendations?: string[];
+  warnings?: string[];
+}
 
 export const slackUsersListTool: MCPTool = {
   name: 'slack_users_list',
-  description: 'List workspace users with engagement scoring, activity analytics, and user intelligence',
+  description: 'List workspace users with comprehensive analytics, advanced filtering, and workspace insights',
   inputSchema: {
     type: 'object',
     properties: {
-      cursor: { type: 'string', description: 'Pagination cursor' },
-      limit: { type: 'number', description: 'Maximum number of users to return', minimum: 1, maximum: 1000, default: 100 },
-      include_locale: { type: 'boolean', description: 'Include user locale information', default: false },
-      analytics: { type: 'boolean', description: 'Include user engagement analytics and insights', default: true },
+      cursor: {
+        type: 'string',
+        description: 'Pagination cursor for retrieving additional results',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of users to return (1-1000)',
+        minimum: 1,
+        maximum: 1000,
+        default: 100,
+      },
+      include_locale: {
+        type: 'boolean',
+        description: 'Include user locale information',
+        default: false,
+      },
+      include_analytics: {
+        type: 'boolean',
+        description: 'Include comprehensive workspace analytics and user insights',
+        default: true,
+      },
+      include_recommendations: {
+        type: 'boolean',
+        description: 'Include recommendations for workspace optimization',
+        default: true,
+      },
+      include_presence: {
+        type: 'boolean',
+        description: 'Include real-time presence information for all users',
+        default: false,
+      },
+      filter_by_name: {
+        type: 'string',
+        description: 'Filter users by name (partial match)',
+      },
+      filter_by_title: {
+        type: 'string',
+        description: 'Filter users by job title (partial match)',
+      },
+      filter_by_status: {
+        type: 'string',
+        description: 'Filter users by status',
+        enum: ['active', 'inactive', 'deleted', 'all'],
+        default: 'all',
+      },
+      filter_by_user_type: {
+        type: 'string',
+        description: 'Filter users by type',
+        enum: ['human', 'bot', 'app', 'all'],
+        default: 'all',
+      },
+      sort_by: {
+        type: 'string',
+        description: 'Sort users by field',
+        enum: ['name', 'real_name', 'created', 'title'],
+        default: 'name',
+      },
+      detailed_analysis: {
+        type: 'boolean',
+        description: 'Perform detailed analysis on each user',
+        default: false,
+      },
     },
     required: [],
   },
@@ -23,62 +240,132 @@ export const slackUsersListTool: MCPTool = {
     const startTime = Date.now();
     
     try {
-      const validatedArgs = {
-        cursor: args.cursor,
-        limit: Math.min(args.limit || 100, 1000),
-        include_locale: args.include_locale || false,
-        analytics: args.analytics !== false,
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackUsersListArgs;
+      const client = slackClient.getClient();
+      
+      let workspaceAnalytics: WorkspaceAnalytics = {
+        workspace_demographics: {
+          total_users: 0,
+          active_users: 0,
+          inactive_users: 0,
+          deleted_users: 0,
+          bot_users: 0,
+          human_users: 0,
+          app_users: 0,
+        },
+        user_distribution: {
+          by_role: {},
+          by_status: {},
+          by_user_type: {},
+          by_timezone: {},
+        },
+        engagement_metrics: {
+          users_with_profiles: 0,
+          users_with_status: 0,
+          users_with_2fa: 0,
+          users_with_confirmed_email: 0,
+          profile_completeness_average: 0,
+          security_score_average: 0,
+        },
+        workspace_insights: {
+          admin_count: 0,
+          owner_count: 0,
+          guest_count: 0,
+          enterprise_users: 0,
+          timezone_diversity_score: 0,
+          profile_health_score: 0,
+          security_health_score: 0,
+        },
+        activity_patterns: {
+          most_common_timezone: null,
+          profile_completion_rate: 0,
+          security_adoption_rate: 0,
+          active_user_percentage: 0,
+        },
+        recommendations: [],
+        warnings: [],
       };
 
-      const result = await slackClient.getClient().users.list({
+      let warnings: string[] = [];
+
+      // Step 1: Get users list
+      const usersResult = await client.users.list({
         cursor: validatedArgs.cursor,
         limit: validatedArgs.limit,
         include_locale: validatedArgs.include_locale,
       });
 
-      let analytics = {};
-      let recommendations = [];
-
-      if (validatedArgs.analytics && result.members) {
-        analytics = {
-          workspace_demographics: {
-            total_users: result.members.length,
-            user_distribution: this.analyzeUserDistribution(result.members),
-            activity_distribution: this.analyzeActivityDistribution(result.members),
-            role_distribution: this.analyzeRoleDistribution(result.members),
-          },
-          engagement_analytics: {
-            engagement_scores: this.calculateEngagementScores(result.members),
-            collaboration_potential: this.assessCollaborationPotential(result.members),
-            team_health_indicators: this.analyzeTeamHealthIndicators(result.members),
-          },
-          diversity_insights: {
-            timezone_diversity: this.analyzeTimezoneDiversity(result.members),
-            profile_completeness_distribution: this.analyzeProfileCompleteness(result.members),
-            communication_style_diversity: this.analyzeCommunicationStyles(result.members),
-          },
-        };
-
-        recommendations = this.generateWorkspaceRecommendations(analytics, result.members);
+      if (!usersResult.ok) {
+        throw new Error(`Failed to get users list: ${usersResult.error}`);
       }
+
+      let users = usersResult.members || [];
+
+      // Step 2: Apply filtering
+      users = this.applyFilters(users, validatedArgs);
+
+      // Step 3: Get presence information if requested
+      if (validatedArgs.include_presence && users.length > 0) {
+        try {
+          // Get presence for up to 50 users to avoid rate limits
+          const usersToCheck = users.slice(0, 50);
+          const presencePromises = usersToCheck.map(async (user: any) => {
+            try {
+              const presenceResult = await client.users.getPresence({ user: user.id });
+              if (presenceResult.ok) {
+                user.presence = presenceResult.presence;
+              }
+            } catch (error) {
+              // Ignore individual presence failures
+            }
+          });
+          
+          await Promise.allSettled(presencePromises);
+        } catch (error) {
+          warnings.push('Could not retrieve presence information for all users');
+        }
+      }
+
+      // Step 4: Enhance users with metadata if detailed analysis is requested
+      if (validatedArgs.detailed_analysis) {
+        users = users.map((user: any) => this.enhanceUserWithMetadata(user));
+      }
+
+      // Step 5: Sort users
+      users = this.sortUsers(users, validatedArgs.sort_by);
+
+      // Step 6: Generate analytics
+      if (validatedArgs.include_analytics) {
+        workspaceAnalytics = this.generateWorkspaceAnalytics(users, validatedArgs);
+      }
+
+      // Step 7: Generate recommendations
+      if (validatedArgs.include_recommendations) {
+        workspaceAnalytics.recommendations = this.generateRecommendations(workspaceAnalytics, users, validatedArgs);
+      }
+
+      workspaceAnalytics.warnings = warnings;
 
       const duration = Date.now() - startTime;
       logger.logToolExecution('slack_users_list', args, duration);
 
       return {
         success: true,
-        members: result.members || [],
-        response_metadata: result.response_metadata,
-        enhancements: validatedArgs.analytics ? {
-          analytics, recommendations,
-          intelligence_categories: ['Workspace Demographics', 'Engagement Analytics', 'Diversity Insights'],
-          ai_insights: recommendations.length,
-          data_points: Object.keys(analytics).length * 5,
-        } : undefined,
+        data: {
+          success: true,
+          members: users,
+          response_metadata: usersResult.response_metadata,
+          cache_ts: usersResult.cache_ts,
+          analytics: validatedArgs.include_analytics ? workspaceAnalytics : undefined,
+          recommendations: validatedArgs.include_recommendations ? workspaceAnalytics.recommendations : undefined,
+          warnings: warnings.length > 0 ? warnings : undefined,
+        } as UsersListResult,
         metadata: {
-          user_count: result.members?.length || 0, execution_time_ms: duration,
-          enhancement_level: validatedArgs.analytics ? '500%' : '100%',
-          api_version: 'enhanced_v2.0.0',
+          execution_time_ms: duration,
+          operation_type: 'users_list',
+          users_retrieved: users.length,
+          filters_applied: this.getAppliedFiltersCount(validatedArgs),
+          has_more: !!usersResult.response_metadata?.next_cursor,
         },
       };
 
@@ -88,272 +375,370 @@ export const slackUsersListTool: MCPTool = {
       logger.logToolError('slack_users_list', errorMessage, args);
       
       return ErrorHandler.createErrorResponse(error, {
-        tool: 'slack_users_list', args, execution_time_ms: duration,
+        tool: 'slack_users_list',
+        args,
+        execution_time_ms: duration,
       });
     }
   },
 
-  analyzeUserDistribution(members: any[]): any {
-    const distribution = {
-      active_users: members.filter(m => !m.deleted && !m.is_bot).length,
-      bots: members.filter(m => m.is_bot).length,
-      deleted_users: members.filter(m => m.deleted).length,
-      restricted_users: members.filter(m => m.is_restricted || m.is_ultra_restricted).length,
-    };
+  /**
+   * Apply filters to users list
+   */
+  applyFilters(users: any[], args: SlackUsersListArgs): any[] {
+    let filteredUsers = [...users];
 
-    return {
-      ...distribution,
-      percentages: {
-        active: Math.round((distribution.active_users / members.length) * 100),
-        bots: Math.round((distribution.bots / members.length) * 100),
-        restricted: Math.round((distribution.restricted_users / members.length) * 100),
-      },
-    };
+    // Filter by name
+    if (args.filter_by_name) {
+      const nameFilter = args.filter_by_name.toLowerCase();
+      filteredUsers = filteredUsers.filter(user => 
+        (user.name && user.name.toLowerCase().includes(nameFilter)) ||
+        (user.real_name && user.real_name.toLowerCase().includes(nameFilter)) ||
+        (user.profile?.display_name && user.profile.display_name.toLowerCase().includes(nameFilter))
+      );
+    }
+
+    // Filter by title
+    if (args.filter_by_title) {
+      const titleFilter = args.filter_by_title.toLowerCase();
+      filteredUsers = filteredUsers.filter(user => 
+        user.profile?.title && user.profile.title.toLowerCase().includes(titleFilter)
+      );
+    }
+
+    // Filter by status
+    if (args.filter_by_status !== 'all') {
+      filteredUsers = filteredUsers.filter(user => {
+        switch (args.filter_by_status) {
+          case 'active':
+            return !user.deleted;
+          case 'inactive':
+            return user.deleted === false && !user.presence; // Not deleted but no presence
+          case 'deleted':
+            return user.deleted;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Filter by user type
+    if (args.filter_by_user_type !== 'all') {
+      filteredUsers = filteredUsers.filter(user => {
+        switch (args.filter_by_user_type) {
+          case 'human':
+            return !user.is_bot && !user.is_app_user && !user.is_workflow_bot;
+          case 'bot':
+            return user.is_bot;
+          case 'app':
+            return user.is_app_user || user.is_workflow_bot;
+          default:
+            return true;
+        }
+      });
+    }
+
+    return filteredUsers;
   },
 
-  analyzeActivityDistribution(members: any[]): any {
-    const now = Date.now() / 1000;
-    const activityRanges = {
-      very_recent: 0, // < 1 day
-      recent: 0,      // < 1 week
-      moderate: 0,    // < 1 month
-      old: 0,         // > 1 month
-      unknown: 0,
-    };
-
-    members.forEach(member => {
-      if (!member.updated) {
-        activityRanges.unknown++;
-        return;
+  /**
+   * Sort users by specified field
+   */
+  sortUsers(users: any[], sortBy: SlackUsersListArgs['sort_by']): any[] {
+    return users.sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return (a.name || '').localeCompare(b.name || '');
+        case 'real_name':
+          return (a.real_name || '').localeCompare(b.real_name || '');
+        case 'created':
+          return (a.updated || 0) - (b.updated || 0);
+        case 'title':
+          return (a.profile?.title || '').localeCompare(b.profile?.title || '');
+        default:
+          return 0;
       }
-      
-      const daysSince = (now - member.updated) / (24 * 3600);
-      if (daysSince < 1) activityRanges.very_recent++;
-      else if (daysSince < 7) activityRanges.recent++;
-      else if (daysSince < 30) activityRanges.moderate++;
-      else activityRanges.old++;
     });
-
-    return {
-      activity_ranges: activityRanges,
-      activity_health: activityRanges.very_recent + activityRanges.recent > members.length * 0.6 ? 'healthy' : 'needs_attention',
-    };
   },
 
-  analyzeRoleDistribution(members: any[]): any {
-    const roles = {
-      owners: members.filter(m => m.is_owner).length,
-      admins: members.filter(m => m.is_admin && !m.is_owner).length,
-      members: members.filter(m => !m.is_admin && !m.is_owner && !m.is_bot && !m.deleted).length,
-      bots: members.filter(m => m.is_bot).length,
-      guests: members.filter(m => m.is_restricted || m.is_ultra_restricted).length,
+  /**
+   * Enhance user with metadata
+   */
+  enhanceUserWithMetadata(user: any): EnhancedUser {
+    const enhanced = { ...user };
+    
+    // Calculate profile completeness
+    let profileScore = 0;
+    if (user.name) profileScore += 10;
+    if (user.real_name) profileScore += 15;
+    if (user.profile?.display_name) profileScore += 10;
+    if (user.profile?.title) profileScore += 15;
+    if (user.profile?.phone) profileScore += 10;
+    if (user.profile?.email) profileScore += 15;
+    if (user.profile?.image_original) profileScore += 15;
+    if (user.profile?.fields && Object.keys(user.profile.fields).length > 0) profileScore += 10;
+    
+    // Calculate security score
+    let securityScore = 40; // Base score
+    if (user.has_2fa) securityScore += 30;
+    if (user.is_email_confirmed) securityScore += 15;
+    if (!user.deleted) securityScore += 10;
+    if (!(user.is_restricted || user.is_ultra_restricted)) securityScore += 5;
+    
+    // Determine engagement level
+    let engagementLevel: 'very_high' | 'high' | 'medium' | 'low' | 'very_low' = 'low';
+    if (user.presence === 'active') engagementLevel = 'very_high';
+    else if (user.presence === 'away') engagementLevel = 'medium';
+    else if (user.is_bot) engagementLevel = 'high';
+    else if (user.deleted) engagementLevel = 'very_low';
+    
+    // Determine account type
+    let accountType: 'human' | 'bot' | 'app' | 'workflow' = 'human';
+    if (user.is_bot) accountType = 'bot';
+    else if (user.is_app_user) accountType = 'app';
+    else if (user.is_workflow_bot) accountType = 'workflow';
+    
+    // Determine permissions level
+    let permissionsLevel: 'owner' | 'admin' | 'member' | 'guest' | 'restricted' = 'member';
+    if (user.is_primary_owner) permissionsLevel = 'owner';
+    else if (user.is_owner) permissionsLevel = 'owner';
+    else if (user.is_admin) permissionsLevel = 'admin';
+    else if (user.is_ultra_restricted) permissionsLevel = 'restricted';
+    else if (user.is_restricted) permissionsLevel = 'guest';
+    
+    enhanced.metadata = {
+      profile_completeness_score: Math.min(profileScore, 100),
+      security_score: Math.min(securityScore, 100),
+      engagement_level: engagementLevel,
+      account_type: accountType,
+      permissions_level: permissionsLevel,
     };
-
-    return {
-      role_counts: roles,
-      leadership_ratio: (roles.owners + roles.admins) / Math.max(roles.members, 1),
-      governance_structure: roles.owners > 1 ? 'shared_ownership' : 'single_owner',
-    };
+    
+    return enhanced;
   },
 
-  calculateEngagementScores(members: any[]): any {
-    const scores = members.map(member => {
-      let score = 50; // Base score
-      
-      if (member.profile?.real_name) score += 10;
-      if (member.profile?.title) score += 15;
-      if (member.profile?.status_text) score += 10;
-      if (member.profile?.image_512) score += 10;
-      if (!member.is_restricted) score += 15;
-      
-      return { user_id: member.id, score: Math.min(score, 100) };
-    });
-
-    const avgScore = scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
-    const highEngagement = scores.filter(s => s.score > 80).length;
-    
-    return {
-      average_engagement_score: Math.round(avgScore),
-      high_engagement_users: highEngagement,
-      engagement_distribution: this.categorizeEngagementScores(scores),
-      top_engaged_users: scores.sort((a, b) => b.score - a.score).slice(0, 5),
-    };
-  },
-
-  categorizeEngagementScores(scores: any[]): any {
-    const categories = { high: 0, medium: 0, low: 0 };
-    
-    scores.forEach(score => {
-      if (score.score > 80) categories.high++;
-      else if (score.score > 60) categories.medium++;
-      else categories.low++;
-    });
-    
-    return categories;
-  },
-
-  assessCollaborationPotential(members: any[]): any {
-    const activeMembers = members.filter(m => !m.deleted && !m.is_bot);
-    const withTitles = activeMembers.filter(m => m.profile?.title).length;
-    const withImages = activeMembers.filter(m => m.profile?.image_512).length;
-    const unrestricted = activeMembers.filter(m => !m.is_restricted).length;
-    
-    const collaborationScore = Math.round(
-      ((withTitles + withImages + unrestricted) / (activeMembers.length * 3)) * 100
-    );
-    
-    return {
-      collaboration_score: collaborationScore,
-      collaboration_readiness: collaborationScore > 70 ? 'high' : collaborationScore > 50 ? 'medium' : 'low',
-      readiness_factors: {
-        role_clarity: Math.round((withTitles / activeMembers.length) * 100),
-        personalization: Math.round((withImages / activeMembers.length) * 100),
-        access_freedom: Math.round((unrestricted / activeMembers.length) * 100),
+  /**
+   * Generate comprehensive workspace analytics
+   */
+  generateWorkspaceAnalytics(users: any[], args: SlackUsersListArgs): WorkspaceAnalytics {
+    const analytics: WorkspaceAnalytics = {
+      workspace_demographics: {
+        total_users: users.length,
+        active_users: 0,
+        inactive_users: 0,
+        deleted_users: 0,
+        bot_users: 0,
+        human_users: 0,
+        app_users: 0,
       },
+      user_distribution: {
+        by_role: {},
+        by_status: {},
+        by_user_type: {},
+        by_timezone: {},
+      },
+      engagement_metrics: {
+        users_with_profiles: 0,
+        users_with_status: 0,
+        users_with_2fa: 0,
+        users_with_confirmed_email: 0,
+        profile_completeness_average: 0,
+        security_score_average: 0,
+      },
+      workspace_insights: {
+        admin_count: 0,
+        owner_count: 0,
+        guest_count: 0,
+        enterprise_users: 0,
+        timezone_diversity_score: 0,
+        profile_health_score: 0,
+        security_health_score: 0,
+      },
+      activity_patterns: {
+        most_common_timezone: null,
+        profile_completion_rate: 0,
+        security_adoption_rate: 0,
+        active_user_percentage: 0,
+      },
+      recommendations: [],
+      warnings: [],
     };
-  },
 
-  analyzeTeamHealthIndicators(members: any[]): any {
-    const activeMembers = members.filter(m => !m.deleted && !m.is_bot);
-    const totalMembers = members.length;
-    
-    const healthIndicators = {
-      active_ratio: activeMembers.length / totalMembers,
-      admin_ratio: members.filter(m => m.is_admin || m.is_owner).length / totalMembers,
-      bot_ratio: members.filter(m => m.is_bot).length / totalMembers,
-      guest_ratio: members.filter(m => m.is_restricted || m.is_ultra_restricted).length / totalMembers,
-    };
-    
-    let healthScore = 70; // Base score
-    if (healthIndicators.active_ratio > 0.8) healthScore += 15;
-    if (healthIndicators.admin_ratio > 0.05 && healthIndicators.admin_ratio < 0.2) healthScore += 10;
-    if (healthIndicators.bot_ratio < 0.3) healthScore += 5;
-    
-    return {
-      health_score: Math.min(healthScore, 100),
-      health_level: healthScore > 85 ? 'excellent' : healthScore > 70 ? 'good' : 'needs_improvement',
-      health_indicators: healthIndicators,
-      improvement_areas: this.identifyImprovementAreas(healthIndicators),
-    };
-  },
+    if (users.length === 0) return analytics;
 
-  identifyImprovementAreas(indicators: any): string[] {
-    const areas = [];
-    
-    if (indicators.active_ratio < 0.7) areas.push('Increase active user engagement');
-    if (indicators.admin_ratio < 0.05) areas.push('Consider adding more administrators');
-    if (indicators.admin_ratio > 0.2) areas.push('Review admin role distribution');
-    if (indicators.bot_ratio > 0.4) areas.push('Review bot necessity and user experience');
-    if (indicators.guest_ratio > 0.3) areas.push('Review guest access policies');
-    
-    return areas;
-  },
+    let totalProfileScore = 0;
+    let totalSecurityScore = 0;
+    const timezones: Record<string, number> = {};
 
-  analyzeTimezoneDiversity(members: any[]): any {
-    const timezones = {};
-    let unknownTimezones = 0;
-    
-    members.forEach(member => {
-      if (member.tz) {
-        timezones[member.tz] = (timezones[member.tz] || 0) + 1;
+    users.forEach(user => {
+      // Demographics
+      if (user.deleted) {
+        analytics.workspace_demographics.deleted_users++;
       } else {
-        unknownTimezones++;
+        analytics.workspace_demographics.active_users++;
+      }
+
+      if (user.is_bot) {
+        analytics.workspace_demographics.bot_users++;
+        analytics.user_distribution.by_user_type['bot'] = (analytics.user_distribution.by_user_type['bot'] || 0) + 1;
+      } else if (user.is_app_user || user.is_workflow_bot) {
+        analytics.workspace_demographics.app_users++;
+        analytics.user_distribution.by_user_type['app'] = (analytics.user_distribution.by_user_type['app'] || 0) + 1;
+      } else {
+        analytics.workspace_demographics.human_users++;
+        analytics.user_distribution.by_user_type['human'] = (analytics.user_distribution.by_user_type['human'] || 0) + 1;
+      }
+
+      // Role distribution
+      if (user.is_primary_owner || user.is_owner) {
+        analytics.workspace_insights.owner_count++;
+        analytics.user_distribution.by_role['owner'] = (analytics.user_distribution.by_role['owner'] || 0) + 1;
+      } else if (user.is_admin) {
+        analytics.workspace_insights.admin_count++;
+        analytics.user_distribution.by_role['admin'] = (analytics.user_distribution.by_role['admin'] || 0) + 1;
+      } else if (user.is_restricted || user.is_ultra_restricted) {
+        analytics.workspace_insights.guest_count++;
+        analytics.user_distribution.by_role['guest'] = (analytics.user_distribution.by_role['guest'] || 0) + 1;
+      } else {
+        analytics.user_distribution.by_role['member'] = (analytics.user_distribution.by_role['member'] || 0) + 1;
+      }
+
+      // Status distribution
+      const status = user.deleted ? 'deleted' : 'active';
+      analytics.user_distribution.by_status[status] = (analytics.user_distribution.by_status[status] || 0) + 1;
+
+      // Timezone distribution
+      if (user.tz) {
+        timezones[user.tz] = (timezones[user.tz] || 0) + 1;
+        analytics.user_distribution.by_timezone[user.tz] = (analytics.user_distribution.by_timezone[user.tz] || 0) + 1;
+      }
+
+      // Engagement metrics
+      if (user.profile && (user.profile.real_name || user.profile.display_name)) {
+        analytics.engagement_metrics.users_with_profiles++;
+      }
+      if (user.profile?.status_text) {
+        analytics.engagement_metrics.users_with_status++;
+      }
+      if (user.has_2fa) {
+        analytics.engagement_metrics.users_with_2fa++;
+      }
+      if (user.is_email_confirmed) {
+        analytics.engagement_metrics.users_with_confirmed_email++;
+      }
+      if (user.enterprise_user) {
+        analytics.workspace_insights.enterprise_users++;
+      }
+
+      // Calculate scores if metadata is available
+      if (user.metadata) {
+        totalProfileScore += user.metadata.profile_completeness_score || 0;
+        totalSecurityScore += user.metadata.security_score || 0;
       }
     });
+
+    // Calculate averages and percentages
+    analytics.engagement_metrics.profile_completeness_average = totalProfileScore / users.length;
+    analytics.engagement_metrics.security_score_average = totalSecurityScore / users.length;
     
-    const uniqueTimezones = Object.keys(timezones).length;
-    const mostCommonTz = Object.entries(timezones).sort(([,a], [,b]) => (b as number) - (a as number))[0];
-    
-    return {
-      unique_timezones: uniqueTimezones,
-      timezone_distribution: timezones,
-      most_common_timezone: mostCommonTz ? mostCommonTz[0] : 'unknown',
-      unknown_timezones: unknownTimezones,
-      global_reach: uniqueTimezones > 5 ? 'global' : uniqueTimezones > 2 ? 'regional' : 'local',
-      diversity_score: Math.min((uniqueTimezones / Math.max(members.length, 1)) * 100, 100),
-    };
+    analytics.activity_patterns.profile_completion_rate = (analytics.engagement_metrics.users_with_profiles / users.length) * 100;
+    analytics.activity_patterns.security_adoption_rate = (analytics.engagement_metrics.users_with_2fa / users.length) * 100;
+    analytics.activity_patterns.active_user_percentage = (analytics.workspace_demographics.active_users / users.length) * 100;
+
+    // Find most common timezone
+    if (Object.keys(timezones).length > 0) {
+      analytics.activity_patterns.most_common_timezone = Object.entries(timezones)
+        .sort(([,a], [,b]) => b - a)[0][0];
+    }
+
+    // Calculate diversity and health scores
+    analytics.workspace_insights.timezone_diversity_score = Math.min((Object.keys(timezones).length / users.length) * 100, 100);
+    analytics.workspace_insights.profile_health_score = analytics.engagement_metrics.profile_completeness_average;
+    analytics.workspace_insights.security_health_score = analytics.engagement_metrics.security_score_average;
+
+    return analytics;
   },
 
-  analyzeProfileCompleteness(members: any[]): any {
-    const completenessScores = members.map(member => {
-      let score = 0;
-      if (member.profile?.real_name) score += 25;
-      if (member.profile?.display_name) score += 15;
-      if (member.profile?.title) score += 20;
-      if (member.profile?.image_512) score += 20;
-      if (member.profile?.status_text) score += 10;
-      if (member.tz) score += 10;
-      return score;
-    });
-    
-    const avgCompleteness = completenessScores.reduce((sum, score) => sum + score, 0) / completenessScores.length;
-    const highCompleteness = completenessScores.filter(score => score > 80).length;
-    
-    return {
-      average_completeness: Math.round(avgCompleteness),
-      completeness_level: avgCompleteness > 70 ? 'high' : avgCompleteness > 50 ? 'medium' : 'low',
-      well_completed_profiles: highCompleteness,
-      completion_distribution: this.categorizeCompleteness(completenessScores),
-    };
-  },
+  /**
+   * Generate recommendations for workspace optimization
+   */
+  generateRecommendations(
+    analytics: WorkspaceAnalytics,
+    users: any[],
+    args: SlackUsersListArgs
+  ): string[] {
+    const recommendations: string[] = [];
 
-  categorizeCompleteness(scores: number[]): any {
-    const categories = { complete: 0, partial: 0, minimal: 0 };
-    
-    scores.forEach(score => {
-      if (score > 80) categories.complete++;
-      else if (score > 40) categories.partial++;
-      else categories.minimal++;
-    });
-    
-    return categories;
-  },
+    // Profile completion recommendations
+    if (analytics.activity_patterns.profile_completion_rate < 70) {
+      recommendations.push('Low profile completion rate - encourage users to complete their profiles for better collaboration');
+    } else if (analytics.activity_patterns.profile_completion_rate > 90) {
+      recommendations.push('Excellent profile completion rate - your team is well-connected!');
+    }
 
-  analyzeCommunicationStyles(members: any[]): any {
-    const styles = {
-      expressive: 0,  // Custom status + display name
-      professional: 0, // Title + real name
-      minimal: 0,     // Basic info only
-      visual: 0,      // Profile image
-    };
-    
-    members.forEach(member => {
-      if (member.profile?.status_text && member.profile?.display_name) styles.expressive++;
-      if (member.profile?.title && member.profile?.real_name) styles.professional++;
-      if (member.profile?.image_512) styles.visual++;
-      if (!member.profile?.status_text && !member.profile?.display_name && !member.profile?.title) styles.minimal++;
-    });
-    
-    return {
-      style_distribution: styles,
-      dominant_style: Object.entries(styles).sort(([,a], [,b]) => (b as number) - (a as number))[0]?.[0] || 'unknown',
-      communication_diversity: Object.values(styles).filter(count => count > 0).length,
-    };
-  },
+    // Security recommendations
+    if (analytics.activity_patterns.security_adoption_rate < 50) {
+      recommendations.push('Low 2FA adoption rate - implement security policies to encourage two-factor authentication');
+    }
 
-  generateWorkspaceRecommendations(analytics: any, members: any[]): string[] {
-    const recommendations = [];
-    
-    if (analytics.workspace_demographics?.user_distribution?.percentages?.active < 70) {
-      recommendations.push('Low active user ratio - consider user engagement strategies');
+    if (analytics.workspace_insights.security_health_score < 60) {
+      recommendations.push('Overall security health is low - review security policies and user education');
     }
-    
-    if (analytics.engagement_analytics?.collaboration_potential?.collaboration_readiness === 'low') {
-      recommendations.push('Low collaboration readiness - encourage profile completion and role clarity');
+
+    // Admin recommendations
+    const adminPercentage = (analytics.workspace_insights.admin_count / analytics.workspace_demographics.total_users) * 100;
+    if (adminPercentage > 20) {
+      recommendations.push('High percentage of admin users - review admin permissions and consider principle of least privilege');
+    } else if (adminPercentage < 5 && analytics.workspace_demographics.total_users > 20) {
+      recommendations.push('Very few admin users - ensure adequate administrative coverage for your workspace');
     }
-    
-    if (analytics.diversity_insights?.timezone_diversity?.global_reach === 'local') {
-      recommendations.push('Limited timezone diversity - consider global collaboration opportunities');
+
+    // Guest user recommendations
+    const guestPercentage = (analytics.workspace_insights.guest_count / analytics.workspace_demographics.total_users) * 100;
+    if (guestPercentage > 30) {
+      recommendations.push('High percentage of guest users - review guest access policies and permissions');
     }
-    
-    if (analytics.engagement_analytics?.team_health_indicators?.health_level === 'needs_improvement') {
-      recommendations.push('Team health needs attention - review user engagement and access policies');
+
+    // Bot recommendations
+    const botPercentage = (analytics.workspace_demographics.bot_users / analytics.workspace_demographics.total_users) * 100;
+    if (botPercentage > 15) {
+      recommendations.push('High number of bots - regularly review bot permissions and remove unused bots');
     }
-    
-    if (analytics.diversity_insights?.profile_completeness_distribution?.completeness_level === 'low') {
-      recommendations.push('Low profile completeness - encourage users to complete their profiles');
+
+    // Deleted user recommendations
+    if (analytics.workspace_demographics.deleted_users > 0) {
+      recommendations.push(`${analytics.workspace_demographics.deleted_users} deleted users found - consider removing them from the workspace`);
     }
-    
+
+    // Timezone diversity recommendations
+    if (analytics.workspace_insights.timezone_diversity_score > 50) {
+      recommendations.push('High timezone diversity - consider asynchronous communication practices and flexible meeting times');
+    }
+
+    // Enterprise recommendations
+    if (analytics.workspace_insights.enterprise_users > 0) {
+      recommendations.push('Enterprise users detected - ensure enterprise policies are properly configured and enforced');
+    }
+
+    // General recommendations
+    if (recommendations.length === 0) {
+      recommendations.push('Workspace user management looks healthy - continue monitoring and maintaining good practices');
+    }
+
     return recommendations;
   },
+
+  /**
+   * Count applied filters
+   */
+  getAppliedFiltersCount(args: SlackUsersListArgs): number {
+    let count = 0;
+    if (args.filter_by_name) count++;
+    if (args.filter_by_title) count++;
+    if (args.filter_by_status !== 'all') count++;
+    if (args.filter_by_user_type !== 'all') count++;
+    return count;
+  },
 };
+
+export default slackUsersListTool;

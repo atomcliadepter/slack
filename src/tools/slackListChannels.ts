@@ -1,199 +1,178 @@
+import { MCPTool } from '../registry/toolRegistry';
+import { slackClient } from '../utils/slackClient';
+import { Validator } from '../utils/validator';
+import { ErrorHandler } from '../utils/error';
+import { logger } from '../utils/logger';
+import { z } from 'zod';
 
+// Enhanced input validation schema
+const inputSchema = z.object({
+  types: z.array(z.enum(['public_channel', 'private_channel', 'mpim', 'im'])).optional().default(['public_channel', 'private_channel']),
+  limit: z.number().min(1).max(1000).optional().default(100),
+  cursor: z.string().optional(),
+  exclude_archived: z.boolean().optional().default(true),
+  team_id: z.string().optional(),
+  filter_by_name: z.string().optional(),
+  filter_by_purpose: z.string().optional(),
+  filter_by_topic: z.string().optional(),
+  include_member_count: z.boolean().optional().default(false),
+  include_metadata: z.boolean().optional().default(false),
+  include_analytics: z.boolean().optional().default(true),
+  sort_by: z.enum(['name', 'created', 'member_count', 'last_activity']).optional().default('name'),
+  sort_order: z.enum(['asc', 'desc']).optional().default('asc'),
+});
 
-import { MCPTool } from '@/registry/toolRegistry';
-import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
-import { ErrorHandler } from '@/utils/error';
-import { logger } from '@/utils/logger';
+type SlackListChannelsArgs = z.infer<typeof inputSchema>;
 
-/**
- * Enhanced Slack List Channels Tool
- * Comprehensive channel listing with filtering, sorting, and metadata analysis
- */
 export const slackListChannelsTool: MCPTool = {
   name: 'slack_list_channels',
-  description: 'List all channels in the workspace with advanced filtering, sorting, and metadata analysis',
+  description: 'List Slack channels with advanced filtering, sorting, and analytics capabilities',
   inputSchema: {
     type: 'object',
     properties: {
       types: {
-        type: 'string',
-        description: 'Comma-separated list of channel types to include (public_channel, private_channel, mpim, im)',
-        default: 'public_channel,private_channel',
-      },
-      exclude_archived: {
-        type: 'boolean',
-        description: 'Exclude archived channels from results',
-        default: true,
+        type: 'array',
+        items: {
+          type: 'string',
+          enum: ['public_channel', 'private_channel', 'mpim', 'im'],
+        },
+        description: 'Types of conversations to include',
+        default: ['public_channel', 'private_channel'],
       },
       limit: {
         type: 'number',
-        description: 'Maximum number of channels to return (1-1000)',
+        description: 'Number of channels to retrieve (1-1000)',
         minimum: 1,
         maximum: 1000,
         default: 100,
       },
       cursor: {
         type: 'string',
-        description: 'Pagination cursor for retrieving next page of results',
+        description: 'Pagination cursor for retrieving next page',
+      },
+      exclude_archived: {
+        type: 'boolean',
+        description: 'Exclude archived channels from results',
+        default: true,
+      },
+      team_id: {
+        type: 'string',
+        description: 'Team ID to filter channels (for Enterprise Grid)',
+      },
+      filter_by_name: {
+        type: 'string',
+        description: 'Filter channels by name pattern (case-insensitive)',
+      },
+      filter_by_purpose: {
+        type: 'string',
+        description: 'Filter channels by purpose content (case-insensitive)',
+      },
+      filter_by_topic: {
+        type: 'string',
+        description: 'Filter channels by topic content (case-insensitive)',
       },
       include_member_count: {
         type: 'boolean',
-        description: 'Include member count for each channel (requires additional API calls)',
-        default: true,
+        description: 'Include member count for each channel',
+        default: false,
       },
-      include_purpose_topic: {
+      include_metadata: {
         type: 'boolean',
-        description: 'Include channel purpose and topic information',
+        description: 'Include additional channel metadata',
+        default: false,
+      },
+      include_analytics: {
+        type: 'boolean',
+        description: 'Include channel analytics and insights',
         default: true,
       },
       sort_by: {
         type: 'string',
         enum: ['name', 'created', 'member_count', 'last_activity'],
-        description: 'Sort channels by specified field',
+        description: 'Field to sort channels by',
         default: 'name',
       },
-      sort_direction: {
+      sort_order: {
         type: 'string',
         enum: ['asc', 'desc'],
-        description: 'Sort direction',
+        description: 'Sort order (ascending or descending)',
         default: 'asc',
       },
-      name_filter: {
-        type: 'string',
-        description: 'Filter channels by name (case-insensitive partial match)',
-      },
-      include_analytics: {
-        type: 'boolean',
-        description: 'Include channel analytics and activity insights',
-        default: false,
-      },
     },
-    required: [],
   },
 
   async execute(args: Record<string, any>) {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = Validator.validate(ToolSchemas.listChannels, args);
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackListChannelsArgs;
       
-      // Parse channel types
-      const channelTypes = (validatedArgs.types || 'public_channel,private_channel').split(',').map(t => t.trim());
-      
-      // Get channels from Slack API
-      const channelsResult = await slackClient.getClient().conversations.list({
-        types: channelTypes.join(','),
-        exclude_archived: validatedArgs.exclude_archived,
+      // Prepare API parameters
+      const apiParams: any = {
+        types: validatedArgs.types.join(','),
         limit: validatedArgs.limit,
         cursor: validatedArgs.cursor,
+        exclude_archived: validatedArgs.exclude_archived,
+        team_id: validatedArgs.team_id,
+      };
+
+      // Remove undefined values
+      Object.keys(apiParams).forEach(key => {
+        if (apiParams[key] === undefined) {
+          delete apiParams[key];
+        }
       });
 
-      if (!channelsResult.channels) {
-        throw new Error('Failed to retrieve channels');
+      // Retrieve channels from Slack API
+      const result = await slackClient.getClient().conversations.list(apiParams);
+
+      if (!result.ok) {
+        throw new Error(`Slack API error: ${result.error}`);
       }
 
-      let channels = channelsResult.channels;
+      let channels = result.channels || [];
 
-      // Apply name filter if specified
-      if (validatedArgs.name_filter) {
-        const filterLower = validatedArgs.name_filter.toLowerCase();
-        channels = channels.filter(channel => 
-          channel.name?.toLowerCase().includes(filterLower)
-        );
+      // Apply client-side filters
+      channels = this.applyFilters(channels, validatedArgs);
+
+      // Enhance channels with additional data if requested
+      if (validatedArgs.include_member_count || validatedArgs.include_metadata) {
+        channels = await this.enhanceChannels(channels, validatedArgs);
       }
-
-      // Enhance channel data
-      const enhancedChannels = await Promise.all(
-        channels.map(async (channel) => {
-          const enhancedChannel: any = {
-            ...channel,
-            analysis: {
-              is_public: !channel.is_private,
-              is_archived: !!channel.is_archived,
-              is_general: channel.is_general || channel.name === 'general',
-              is_member: !!channel.is_member,
-              has_purpose: !!(channel.purpose?.value),
-              has_topic: !!(channel.topic?.value),
-              created_date: channel.created ? new Date(channel.created * 1000).toISOString() : null,
-            },
-          };
-
-          // Get member count if requested
-          if (validatedArgs.include_member_count && channel.id) {
-            try {
-              // Get full member count using info API
-              const infoResult = await slackClient.getClient().conversations.info({
-                channel: channel.id,
-                include_num_members: true,
-              });
-              
-              enhancedChannel.member_count = infoResult.channel?.num_members || 0;
-            } catch (error) {
-              logger.warn(`Failed to get member count for channel ${channel.id}:`, ErrorHandler.handleError(error));
-              enhancedChannel.member_count = null;
-            }
-          }
-
-          // Include purpose and topic details
-          if (validatedArgs.include_purpose_topic) {
-            enhancedChannel.purpose_details = {
-              value: channel.purpose?.value || '',
-              creator: channel.purpose?.creator || null,
-              last_set: channel.purpose?.last_set ? new Date(channel.purpose.last_set * 1000).toISOString() : null,
-            };
-            
-            enhancedChannel.topic_details = {
-              value: channel.topic?.value || '',
-              creator: channel.topic?.creator || null,
-              last_set: channel.topic?.last_set ? new Date(channel.topic.last_set * 1000).toISOString() : null,
-            };
-          }
-
-          // Add analytics if requested
-          if (validatedArgs.include_analytics) {
-            enhancedChannel.analytics = await getChannelAnalytics(channel);
-          }
-
-          return enhancedChannel;
-        })
-      );
 
       // Sort channels
-      const sortedChannels = sortChannels(enhancedChannels, validatedArgs.sort_by || 'name', validatedArgs.sort_direction || 'asc');
+      channels = this.sortChannels(channels, validatedArgs);
 
-      // Generate summary statistics
-      const summary = generateChannelSummary(sortedChannels, channelTypes);
+      // Generate analytics if requested
+      let analytics = {};
+      if (validatedArgs.include_analytics) {
+        analytics = this.generateChannelAnalytics(channels, validatedArgs);
+      }
 
       const duration = Date.now() - startTime;
       logger.logToolExecution('slack_list_channels', args, duration);
 
       return {
         success: true,
-        channels: sortedChannels,
-        summary,
-        pagination: {
-          has_more: !!channelsResult.response_metadata?.next_cursor,
-          next_cursor: channelsResult.response_metadata?.next_cursor || null,
-          total_returned: sortedChannels.length,
+        data: {
+          channels,
+          response_metadata: result.response_metadata,
+          has_more: !!result.response_metadata?.next_cursor,
         },
         metadata: {
-          channel_types_requested: channelTypes,
+          execution_time_ms: duration,
+          channel_count: channels.length,
+          analytics: validatedArgs.include_analytics ? analytics : undefined,
           filters_applied: {
-            exclude_archived: validatedArgs.exclude_archived,
-            name_filter: validatedArgs.name_filter || null,
+            name_filter: !!validatedArgs.filter_by_name,
+            purpose_filter: !!validatedArgs.filter_by_purpose,
+            topic_filter: !!validatedArgs.filter_by_topic,
+            archived_excluded: validatedArgs.exclude_archived,
           },
           sorting: {
             sort_by: validatedArgs.sort_by,
-            sort_direction: validatedArgs.sort_direction,
+            sort_order: validatedArgs.sort_order,
           },
-          data_included: {
-            member_count: validatedArgs.include_member_count,
-            purpose_topic: validatedArgs.include_purpose_topic,
-            analytics: validatedArgs.include_analytics,
-          },
-          execution_time_ms: duration,
         },
       };
 
@@ -209,161 +188,278 @@ export const slackListChannelsTool: MCPTool = {
       });
     }
   },
+
+  // Helper method to apply client-side filters
+  applyFilters(channels: any[], args: SlackListChannelsArgs): any[] {
+    let filteredChannels = [...channels];
+
+    // Filter by name
+    if (args.filter_by_name) {
+      const nameFilter = args.filter_by_name.toLowerCase();
+      filteredChannels = filteredChannels.filter(channel =>
+        channel.name?.toLowerCase().includes(nameFilter)
+      );
+    }
+
+    // Filter by purpose
+    if (args.filter_by_purpose) {
+      const purposeFilter = args.filter_by_purpose.toLowerCase();
+      filteredChannels = filteredChannels.filter(channel =>
+        channel.purpose?.value?.toLowerCase().includes(purposeFilter)
+      );
+    }
+
+    // Filter by topic
+    if (args.filter_by_topic) {
+      const topicFilter = args.filter_by_topic.toLowerCase();
+      filteredChannels = filteredChannels.filter(channel =>
+        channel.topic?.value?.toLowerCase().includes(topicFilter)
+      );
+    }
+
+    return filteredChannels;
+  },
+
+  // Helper method to enhance channels with additional data
+  async enhanceChannels(channels: any[], args: SlackListChannelsArgs): Promise<any[]> {
+    const enhancedChannels = [];
+
+    for (const channel of channels) {
+      const enhanced = { ...channel };
+
+      // Add member count if requested
+      if (args.include_member_count && channel.id) {
+        try {
+          const membersResult = await slackClient.getClient().conversations.members({
+            channel: channel.id,
+            limit: 1,
+          });
+          
+          if (membersResult.ok && membersResult.response_metadata) {
+            // Estimate member count from pagination info
+            enhanced.member_count = membersResult.response_metadata.next_cursor ? '100+' : 
+              (membersResult.members?.length || 0);
+          }
+        } catch (error) {
+          // Continue without member count if API call fails
+          enhanced.member_count = 'unknown';
+        }
+      }
+
+      // Add metadata if requested
+      if (args.include_metadata) {
+        enhanced.metadata = {
+          has_topic: !!(channel.topic?.value),
+          has_purpose: !!(channel.purpose?.value),
+          topic_length: channel.topic?.value?.length || 0,
+          purpose_length: channel.purpose?.value?.length || 0,
+          is_general: channel.is_general || false,
+          is_shared: channel.is_shared || false,
+          is_org_shared: channel.is_org_shared || false,
+          created_date: channel.created ? new Date(channel.created * 1000).toISOString() : null,
+        };
+      }
+
+      enhancedChannels.push(enhanced);
+    }
+
+    return enhancedChannels;
+  },
+
+  // Helper method to sort channels
+  sortChannels(channels: any[], args: SlackListChannelsArgs): any[] {
+    const sortedChannels = [...channels];
+
+    sortedChannels.sort((a, b) => {
+      let aValue, bValue;
+
+      switch (args.sort_by) {
+        case 'name':
+          aValue = a.name || '';
+          bValue = b.name || '';
+          break;
+        case 'created':
+          aValue = a.created || 0;
+          bValue = b.created || 0;
+          break;
+        case 'member_count':
+          aValue = typeof a.member_count === 'number' ? a.member_count : 0;
+          bValue = typeof b.member_count === 'number' ? b.member_count : 0;
+          break;
+        case 'last_activity':
+          // Use created as proxy for last activity if not available
+          aValue = a.last_read || a.created || 0;
+          bValue = b.last_read || b.created || 0;
+          break;
+        default:
+          aValue = a.name || '';
+          bValue = b.name || '';
+      }
+
+      // Handle string comparison
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        const comparison = aValue.localeCompare(bValue);
+        return args.sort_order === 'desc' ? -comparison : comparison;
+      }
+
+      // Handle numeric comparison
+      const comparison = aValue - bValue;
+      return args.sort_order === 'desc' ? -comparison : comparison;
+    });
+
+    return sortedChannels;
+  },
+
+  // Helper method to generate channel analytics
+  generateChannelAnalytics(channels: any[], args: SlackListChannelsArgs): Record<string, any> {
+    const totalChannels = channels.length;
+    
+    if (totalChannels === 0) {
+      return {
+        summary: { total_channels: 0 },
+        note: 'No channels found matching the criteria',
+      };
+    }
+
+    // Channel type distribution
+    const typeDistribution = channels.reduce((acc, channel) => {
+      if (channel.is_private) {
+        acc.private = (acc.private || 0) + 1;
+      } else {
+        acc.public = (acc.public || 0) + 1;
+      }
+      
+      if (channel.is_archived) {
+        acc.archived = (acc.archived || 0) + 1;
+      }
+      
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Content analysis
+    const channelsWithTopic = channels.filter(ch => ch.topic?.value).length;
+    const channelsWithPurpose = channels.filter(ch => ch.purpose?.value).length;
+    const generalChannels = channels.filter(ch => ch.is_general).length;
+    const sharedChannels = channels.filter(ch => ch.is_shared).length;
+
+    // Name analysis
+    const namePatterns = this.analyzeChannelNames(channels);
+
+    // Creation time analysis
+    const creationAnalysis = this.analyzeCreationTimes(channels);
+
+    return {
+      summary: {
+        total_channels: totalChannels,
+        type_distribution: typeDistribution,
+        content_stats: {
+          with_topic: channelsWithTopic,
+          with_purpose: channelsWithPurpose,
+          topic_rate: Math.round((channelsWithTopic / totalChannels) * 100),
+          purpose_rate: Math.round((channelsWithPurpose / totalChannels) * 100),
+        },
+      },
+      channel_characteristics: {
+        general_channels: generalChannels,
+        shared_channels: sharedChannels,
+        name_patterns: namePatterns,
+        creation_analysis: creationAnalysis,
+      },
+      retrieval_info: {
+        requested_limit: args.limit,
+        actual_retrieved: totalChannels,
+        filters_applied: !!(args.filter_by_name || args.filter_by_purpose || args.filter_by_topic),
+        sort_applied: `${args.sort_by} (${args.sort_order})`,
+      },
+      recommendations: this.generateChannelRecommendations(channels, args),
+    };
+  },
+
+  // Helper method to analyze channel names
+  analyzeChannelNames(channels: any[]): Record<string, any> {
+    const names = channels.map(ch => ch.name).filter(Boolean);
+    
+    const patterns = {
+      with_hyphens: names.filter(name => name.includes('-')).length,
+      with_underscores: names.filter(name => name.includes('_')).length,
+      with_numbers: names.filter(name => /\d/.test(name)).length,
+      average_length: names.length > 0 ? Math.round(names.reduce((sum, name) => sum + name.length, 0) / names.length) : 0,
+    };
+
+    // Common prefixes
+    const prefixes = names.map(name => name.split('-')[0]).reduce((acc, prefix) => {
+      acc[prefix] = (acc[prefix] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const commonPrefixes = Object.entries(prefixes)
+      .filter(([, count]) => (count as number) > 1)
+      .sort(([, a], [, b]) => (b as number) - (a as number))
+      .slice(0, 5)
+      .map(([prefix, count]) => ({ prefix, count: count as number }));
+
+    return {
+      ...patterns,
+      common_prefixes: commonPrefixes,
+    };
+  },
+
+  // Helper method to analyze creation times
+  analyzeCreationTimes(channels: any[]): Record<string, any> {
+    const timestamps = channels.map(ch => ch.created).filter(Boolean);
+    
+    if (timestamps.length === 0) {
+      return { note: 'No creation timestamps available' };
+    }
+
+    const dates = timestamps.map(ts => new Date(ts * 1000));
+    const oldest = new Date(Math.min(...timestamps) * 1000);
+    const newest = new Date(Math.max(...timestamps) * 1000);
+
+    // Group by month for trend analysis
+    const monthlyCreation = dates.reduce((acc, date) => {
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      acc[monthKey] = (acc[monthKey] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      oldest_channel: oldest.toISOString(),
+      newest_channel: newest.toISOString(),
+      time_span_days: Math.round((newest.getTime() - oldest.getTime()) / (1000 * 60 * 60 * 24)),
+      monthly_creation: monthlyCreation,
+    };
+  },
+
+  // Helper method to generate recommendations
+  generateChannelRecommendations(channels: any[], args: SlackListChannelsArgs): string[] {
+    const recommendations = [];
+    const totalChannels = channels.length;
+
+    if (totalChannels === 0) {
+      recommendations.push('No channels found - consider adjusting your filter criteria');
+      return recommendations;
+    }
+
+    const channelsWithoutTopic = channels.filter(ch => !ch.topic?.value).length;
+    const channelsWithoutPurpose = channels.filter(ch => !ch.purpose?.value).length;
+
+    if (channelsWithoutTopic > totalChannels * 0.3) {
+      recommendations.push('Consider adding topics to channels without them to improve discoverability');
+    }
+
+    if (channelsWithoutPurpose > totalChannels * 0.3) {
+      recommendations.push('Adding purposes to channels helps users understand their intended use');
+    }
+
+    if (args.limit >= 100 && totalChannels === args.limit) {
+      recommendations.push('You may have more channels - consider using pagination to see all results');
+    }
+
+    if (!args.include_member_count) {
+      recommendations.push('Enable member count to identify inactive or overpopulated channels');
+    }
+
+    return recommendations;
+  },
 };
-
-/**
- * Sort channels by specified criteria
- */
-function sortChannels(channels: any[], sortBy: string, sortDirection: string): any[] {
-  return channels.sort((a, b) => {
-    let aValue: any;
-    let bValue: any;
-
-    switch (sortBy) {
-      case 'name':
-        aValue = a.name || '';
-        bValue = b.name || '';
-        break;
-      case 'created':
-        aValue = a.created || 0;
-        bValue = b.created || 0;
-        break;
-      case 'member_count':
-        aValue = a.member_count || 0;
-        bValue = b.member_count || 0;
-        break;
-      case 'last_activity':
-        aValue = a.latest?.ts || 0;
-        bValue = b.latest?.ts || 0;
-        break;
-      default:
-        aValue = a.name || '';
-        bValue = b.name || '';
-    }
-
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      const comparison = aValue.localeCompare(bValue);
-      return sortDirection === 'desc' ? -comparison : comparison;
-    }
-
-    const comparison = aValue - bValue;
-    return sortDirection === 'desc' ? -comparison : comparison;
-  });
-}
-
-/**
- * Generate channel summary statistics
- */
-function generateChannelSummary(channels: any[], channelTypes: string[]): any {
-  const summary = {
-    total_channels: channels.length,
-    by_type: {} as Record<string, number>,
-    by_status: {
-      active: 0,
-      archived: 0,
-    },
-    member_stats: {
-      total_members: 0,
-      average_members_per_channel: 0,
-      largest_channel: null as any,
-      smallest_channel: null as any,
-    },
-    content_stats: {
-      channels_with_purpose: 0,
-      channels_with_topic: 0,
-      channels_with_both: 0,
-    },
-  };
-
-  // Initialize type counters
-  channelTypes.forEach(type => {
-    summary.by_type[type] = 0;
-  });
-
-  let totalMembers = 0;
-  let channelsWithMemberCount = 0;
-  let largestChannel: any = null;
-  let smallestChannel: any = null;
-
-  channels.forEach(channel => {
-    // Count by type
-    if (channel.is_private) {
-      summary.by_type['private_channel'] = (summary.by_type['private_channel'] || 0) + 1;
-    } else if (channel.is_im) {
-      summary.by_type['im'] = (summary.by_type['im'] || 0) + 1;
-    } else if (channel.is_mpim) {
-      summary.by_type['mpim'] = (summary.by_type['mpim'] || 0) + 1;
-    } else {
-      summary.by_type['public_channel'] = (summary.by_type['public_channel'] || 0) + 1;
-    }
-
-    // Count by status
-    if (channel.is_archived) {
-      summary.by_status.archived++;
-    } else {
-      summary.by_status.active++;
-    }
-
-    // Member statistics
-    if (typeof channel.member_count === 'number') {
-      totalMembers += channel.member_count;
-      channelsWithMemberCount++;
-
-      if (!largestChannel || channel.member_count > largestChannel.member_count) {
-        largestChannel = {
-          name: channel.name,
-          id: channel.id,
-          member_count: channel.member_count,
-        };
-      }
-
-      if (!smallestChannel || channel.member_count < smallestChannel.member_count) {
-        smallestChannel = {
-          name: channel.name,
-          id: channel.id,
-          member_count: channel.member_count,
-        };
-      }
-    }
-
-    // Content statistics
-    const hasPurpose = !!(channel.purpose?.value || channel.purpose_details?.value);
-    const hasTopic = !!(channel.topic?.value || channel.topic_details?.value);
-
-    if (hasPurpose) summary.content_stats.channels_with_purpose++;
-    if (hasTopic) summary.content_stats.channels_with_topic++;
-    if (hasPurpose && hasTopic) summary.content_stats.channels_with_both++;
-  });
-
-  // Calculate averages
-  if (channelsWithMemberCount > 0) {
-    summary.member_stats.total_members = totalMembers;
-    summary.member_stats.average_members_per_channel = Math.round(totalMembers / channelsWithMemberCount);
-    summary.member_stats.largest_channel = largestChannel;
-    summary.member_stats.smallest_channel = smallestChannel;
-  }
-
-  return summary;
-}
-
-/**
- * Get channel analytics (simplified version)
- */
-async function getChannelAnalytics(channel: any): Promise<any> {
-  // This would require additional API calls for comprehensive analytics
-  // For now, return basic analysis based on available data
-  return {
-    activity_level: channel.latest ? 'active' : 'inactive',
-    last_message_time: channel.latest?.ts ? new Date(parseFloat(channel.latest.ts) * 1000).toISOString() : null,
-    estimated_activity: channel.latest ? 'recent' : 'stale',
-    note: 'Comprehensive analytics require additional API permissions and calls',
-    available_metrics: [
-      'message_count_last_30_days',
-      'active_members_last_week',
-      'files_shared_count',
-      'reactions_count',
-      'thread_activity',
-    ],
-    implementation_status: 'basic',
-  };
-}

@@ -1,24 +1,35 @@
+import { MCPTool } from '../registry/toolRegistry';
+import { slackClient } from '../utils/slackClient';
+import { Validator } from '../utils/validator';
+import { ErrorHandler } from '../utils/error';
+import { logger } from '../utils/logger';
+import { z } from 'zod';
 
-import { MCPTool } from '@/registry/toolRegistry';
-import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
-import { ErrorHandler } from '@/utils/error';
-import { logger } from '@/utils/logger';
+// Enhanced input validation schema
+const inputSchema = z.object({
+  name: z.string().min(1, 'Channel name is required').max(21, 'Channel name must be 21 characters or less').regex(/^[a-z0-9_-]+$/, 'Channel name must contain only lowercase letters, numbers, hyphens, and underscores'),
+  is_private: z.boolean().optional().default(false),
+  topic: z.string().max(250, 'Topic must be 250 characters or less').optional(),
+  purpose: z.string().max(250, 'Purpose must be 250 characters or less').optional(),
+  invite_users: z.array(z.string()).optional(),
+  send_welcome_message: z.boolean().optional().default(false),
+  welcome_message: z.string().optional(),
+  template: z.enum(['general', 'project', 'team', 'support', 'announcement']).optional(),
+  include_analytics: z.boolean().optional().default(true),
+});
 
-/**
- * Enhanced Slack Create Channel Tool
- * Smart channel creation with templates, validation, and post-creation setup
- */
+type SlackCreateChannelArgs = z.infer<typeof inputSchema>;
+
 export const slackCreateChannelTool: MCPTool = {
   name: 'slack_create_channel',
-  description: 'Create a new Slack channel with smart naming, templates, and automatic setup',
+  description: 'Create a new Slack channel with advanced configuration, user invitations, and template support',
   inputSchema: {
     type: 'object',
     properties: {
       name: {
         type: 'string',
-        description: 'Channel name (lowercase, no spaces, max 21 characters)',
-        pattern: '^[a-z0-9-_]+$',
+        description: 'Channel name (lowercase, max 21 chars, alphanumeric with hyphens/underscores)',
+        pattern: '^[a-z0-9_-]+$',
         maxLength: 21,
       },
       is_private: {
@@ -36,31 +47,29 @@ export const slackCreateChannelTool: MCPTool = {
         description: 'Channel purpose (max 250 characters)',
         maxLength: 250,
       },
-      template: {
-        type: 'string',
-        description: 'Channel template to apply',
-        enum: ['project', 'team', 'support', 'social', 'announcement', 'custom'],
-      },
       invite_users: {
         type: 'array',
-        description: 'Users to invite to the channel',
-        items: {
-          type: 'string',
-        },
-      },
-      auto_archive_duration: {
-        type: 'number',
-        description: 'Auto-archive duration in minutes',
-        enum: [60, 1440, 4320, 10080], // 1 hour, 1 day, 3 days, 1 week
+        items: { type: 'string' },
+        description: 'Array of user IDs or usernames to invite',
       },
       send_welcome_message: {
         type: 'boolean',
-        description: 'Send a welcome message to the channel',
-        default: true,
+        description: 'Send welcome message after creation',
+        default: false,
       },
       welcome_message: {
         type: 'string',
-        description: 'Custom welcome message (uses template default if not provided)',
+        description: 'Custom welcome message text',
+      },
+      template: {
+        type: 'string',
+        enum: ['general', 'project', 'team', 'support', 'announcement'],
+        description: 'Channel template for predefined settings',
+      },
+      include_analytics: {
+        type: 'boolean',
+        description: 'Include channel creation analytics',
+        default: true,
       },
     },
     required: ['name'],
@@ -70,166 +79,61 @@ export const slackCreateChannelTool: MCPTool = {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = Validator.validate(ToolSchemas.createChannel, args);
+      // Validate input parameters
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackCreateChannelArgs;
       
-      // Apply channel name best practices
-      let channelName = validatedArgs.name.toLowerCase();
+      // Apply template settings if specified
+      const channelConfig = this.applyTemplate(validatedArgs);
       
-      // Remove invalid characters and replace with hyphens
-      channelName = channelName.replace(/[^a-z0-9-_]/g, '-');
-      
-      // Remove consecutive hyphens
-      channelName = channelName.replace(/-+/g, '-');
-      
-      // Remove leading/trailing hyphens
-      channelName = channelName.replace(/^-+|-+$/g, '');
-      
-      // Ensure it's not too long
-      if (channelName.length > 21) {
-        channelName = channelName.substring(0, 21);
-      }
-
-      // Check if channel already exists
-      try {
-        const existingChannel = await slackClient.getChannelInfo(channelName);
-        if (existingChannel.success) {
-          throw new Error(`Channel '${channelName}' already exists`);
-        }
-      } catch (error) {
-        // Channel doesn't exist, which is what we want
-      }
-
-      // Apply template defaults
-      const templates = {
-        project: {
-          topic: 'Project collaboration and updates',
-          purpose: 'Dedicated space for project team collaboration',
-          welcome_message: `Welcome to the ${channelName} project channel! 🚀\n\nThis channel is for:\n• Project updates and discussions\n• Sharing progress and milestones\n• Coordinating team activities\n\nLet's build something amazing together!`,
-        },
-        team: {
-          topic: 'Team communication and coordination',
-          purpose: 'Team collaboration and daily communication',
-          welcome_message: `Welcome to the ${channelName} team channel! 👥\n\nThis is our space for:\n• Team updates and announcements\n• Daily coordination\n• Sharing ideas and feedback\n\nLooking forward to working together!`,
-        },
-        support: {
-          topic: 'Customer support and issue tracking',
-          purpose: 'Customer support coordination and issue resolution',
-          welcome_message: `Welcome to the ${channelName} support channel! 🛟\n\nThis channel is for:\n• Customer support coordination\n• Issue tracking and resolution\n• Sharing solutions and best practices\n\nLet's provide excellent support together!`,
-        },
-        social: {
-          topic: 'Social interactions and team building',
-          purpose: 'Casual conversations and team bonding',
-          welcome_message: `Welcome to ${channelName}! 🎉\n\nThis is our space for:\n• Casual conversations\n• Sharing interesting content\n• Team bonding activities\n\nFeel free to share and connect!`,
-        },
-        announcement: {
-          topic: 'Important announcements and updates',
-          purpose: 'Official announcements and company updates',
-          welcome_message: `Welcome to ${channelName}! 📢\n\nThis channel is for:\n• Important announcements\n• Company updates\n• Official communications\n\nStay tuned for important updates!`,
-        },
-      };
-
-      const template = args.template && templates[args.template as keyof typeof templates] 
-        ? templates[args.template as keyof typeof templates] 
-        : null;
-
-      // Prepare channel creation parameters
-      const createParams: any = {
-        name: channelName,
-        is_private: validatedArgs.is_private,
-      };
-
       // Create the channel
-      const createResult = await slackClient.getClient().conversations.create(createParams);
-      
-      if (!createResult.channel) {
-        throw new Error('Failed to create channel');
+      const createResult = await slackClient.getClient().conversations.create({
+        name: channelConfig.name,
+        is_private: channelConfig.is_private,
+      });
+
+      if (!createResult.ok) {
+        throw new Error(`Failed to create channel: ${createResult.error}`);
       }
 
-      const channelId = createResult.channel.id!;
-      const setupResults: any[] = [];
+      const channel = createResult.channel;
+      const channelId = channel?.id;
 
-      // Set topic if provided or from template
-      const topic = validatedArgs.topic || template?.topic;
-      if (topic) {
-        try {
-          await slackClient.getClient().conversations.setTopic({
-            channel: channelId,
-            topic,
-          });
-          setupResults.push({ action: 'set_topic', success: true });
-        } catch (error) {
-          setupResults.push({ 
-            action: 'set_topic', 
-            success: false, 
-            error: ErrorHandler.handleError(error) 
-          });
-        }
+      if (!channelId) {
+        throw new Error('Channel creation succeeded but no channel ID returned');
       }
 
-      // Set purpose if provided or from template
-      const purpose = validatedArgs.purpose || template?.purpose;
-      if (purpose) {
-        try {
-          await slackClient.getClient().conversations.setPurpose({
-            channel: channelId,
-            purpose,
-          });
-          setupResults.push({ action: 'set_purpose', success: true });
-        } catch (error) {
-          setupResults.push({ 
-            action: 'set_purpose', 
-            success: false, 
-            error: ErrorHandler.handleError(error) 
-          });
-        }
+      // Set topic if provided
+      if (channelConfig.topic) {
+        await slackClient.getClient().conversations.setTopic({
+          channel: channelId,
+          topic: channelConfig.topic,
+        });
+      }
+
+      // Set purpose if provided
+      if (channelConfig.purpose) {
+        await slackClient.getClient().conversations.setPurpose({
+          channel: channelId,
+          purpose: channelConfig.purpose,
+        });
       }
 
       // Invite users if specified
-      if (args.invite_users && args.invite_users.length > 0) {
-        try {
-          const userIds = await Promise.all(
-            args.invite_users.map((user: string) => slackClient.resolveUserId(user))
-          );
-
-          await slackClient.getClient().conversations.invite({
-            channel: channelId,
-            users: userIds.join(','),
-          });
-          
-          setupResults.push({ 
-            action: 'invite_users', 
-            success: true, 
-            users_invited: userIds.length 
-          });
-        } catch (error) {
-          setupResults.push({ 
-            action: 'invite_users', 
-            success: false, 
-            error: ErrorHandler.handleError(error) 
-          });
-        }
+      let invitedUsers: string[] = [];
+      if (channelConfig.invite_users && channelConfig.invite_users.length > 0) {
+        invitedUsers = await this.inviteUsers(channelId, channelConfig.invite_users);
       }
 
-      // Send welcome message
-      if (args.send_welcome_message !== false) {
-        const welcomeMessage = args.welcome_message || template?.welcome_message || 
-          `Welcome to #${channelName}! This channel was created to facilitate team collaboration and communication.`;
-        
-        try {
-          await slackClient.getClient().chat.postMessage({
-            channel: channelId,
-            text: welcomeMessage,
-            unfurl_links: false,
-          });
-          setupResults.push({ action: 'send_welcome_message', success: true });
-        } catch (error) {
-          setupResults.push({ 
-            action: 'send_welcome_message', 
-            success: false, 
-            error: ErrorHandler.handleError(error) 
-          });
-        }
+      // Send welcome message if requested
+      let welcomeMessageResult = null;
+      if (channelConfig.send_welcome_message) {
+        welcomeMessageResult = await this.sendWelcomeMessage(channelId, channelConfig);
+      }
+
+      // Generate analytics if requested
+      let analytics = {};
+      if (validatedArgs.include_analytics) {
+        analytics = this.generateChannelAnalytics(channel, channelConfig, invitedUsers);
       }
 
       const duration = Date.now() - startTime;
@@ -237,21 +141,31 @@ export const slackCreateChannelTool: MCPTool = {
 
       return {
         success: true,
-        channel: {
-          id: channelId,
-          name: channelName,
-          is_private: validatedArgs.is_private,
-          topic,
-          purpose,
-          created: new Date().toISOString(),
+        data: {
+          channel: {
+            id: channelId,
+            name: channel?.name,
+            is_private: channel?.is_private,
+            created: channel?.created,
+            creator: channel?.creator,
+            topic: channelConfig.topic,
+            purpose: channelConfig.purpose,
+          },
+          invited_users: invitedUsers,
+          welcome_message_sent: !!welcomeMessageResult,
+          welcome_message_ts: welcomeMessageResult?.ts,
         },
-        setup_results: setupResults,
         metadata: {
-          original_name: validatedArgs.name,
-          sanitized_name: channelName,
-          template_applied: args.template || null,
-          users_invited: args.invite_users?.length || 0,
           execution_time_ms: duration,
+          analytics: validatedArgs.include_analytics ? analytics : undefined,
+          template_applied: channelConfig.template,
+          configuration: {
+            is_private: channelConfig.is_private,
+            has_topic: !!channelConfig.topic,
+            has_purpose: !!channelConfig.purpose,
+            users_invited: invitedUsers.length,
+            welcome_message_sent: !!welcomeMessageResult,
+          },
         },
       };
 
@@ -266,5 +180,150 @@ export const slackCreateChannelTool: MCPTool = {
         execution_time_ms: duration,
       });
     }
+  },
+
+  // Helper method to apply template settings
+  applyTemplate(args: SlackCreateChannelArgs): SlackCreateChannelArgs {
+    if (!args.template) return args;
+
+    const templates = {
+      general: {
+        topic: args.topic || 'General discussion and updates',
+        purpose: args.purpose || 'A place for general team communication',
+        welcome_message: args.welcome_message || 'Welcome to the general discussion channel! 👋',
+      },
+      project: {
+        topic: args.topic || 'Project coordination and updates',
+        purpose: args.purpose || 'Dedicated channel for project collaboration',
+        welcome_message: args.welcome_message || 'Welcome to the project channel! Let\'s build something great together! 🚀',
+      },
+      team: {
+        topic: args.topic || 'Team communication and coordination',
+        purpose: args.purpose || 'Private space for team discussions',
+        is_private: args.is_private ?? true,
+        welcome_message: args.welcome_message || 'Welcome to the team channel! This is our private space for collaboration. 👥',
+      },
+      support: {
+        topic: args.topic || 'Customer support and help requests',
+        purpose: args.purpose || 'Channel for handling support requests and issues',
+        welcome_message: args.welcome_message || 'Welcome to the support channel! We\'re here to help. 🆘',
+      },
+      announcement: {
+        topic: args.topic || 'Important announcements and updates',
+        purpose: args.purpose || 'Channel for company-wide announcements',
+        welcome_message: args.welcome_message || 'Welcome to the announcements channel! Stay updated with important news. 📢',
+      },
+    };
+
+    const template = templates[args.template];
+    return {
+      ...args,
+      ...template,
+    };
+  },
+
+  // Helper method to invite users to the channel
+  async inviteUsers(channelId: string, userIds: string[]): Promise<string[]> {
+    const invitedUsers: string[] = [];
+    
+    for (const userId of userIds) {
+      try {
+        // Resolve user ID if username provided
+        const resolvedUserId = userId.startsWith('U') ? userId : await slackClient.resolveUserId(userId);
+        
+        const inviteResult = await slackClient.getClient().conversations.invite({
+          channel: channelId,
+          users: resolvedUserId,
+        });
+
+        if (inviteResult.ok) {
+          invitedUsers.push(resolvedUserId);
+        }
+      } catch (error) {
+        // Log error but continue with other invitations
+        logger.error(`Failed to invite user ${userId}:`, error);
+      }
+    }
+
+    return invitedUsers;
+  },
+
+  // Helper method to send welcome message
+  async sendWelcomeMessage(channelId: string, config: SlackCreateChannelArgs) {
+    if (!config.welcome_message) return null;
+
+    try {
+      const result = await slackClient.getClient().chat.postMessage({
+        channel: channelId,
+        text: config.welcome_message,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: config.welcome_message,
+            },
+          },
+        ],
+      });
+
+      return result.ok ? result : null;
+    } catch (error) {
+      logger.error('Failed to send welcome message:', error);
+      return null;
+    }
+  },
+
+  // Helper method to generate channel analytics
+  generateChannelAnalytics(channel: any, config: SlackCreateChannelArgs, invitedUsers: string[]): Record<string, any> {
+    return {
+      channel_info: {
+        name_length: config.name.length,
+        is_private: config.is_private,
+        has_topic: !!config.topic,
+        has_purpose: !!config.purpose,
+        topic_length: config.topic?.length || 0,
+        purpose_length: config.purpose?.length || 0,
+      },
+      setup_configuration: {
+        template_used: config.template || 'none',
+        users_invited: invitedUsers.length,
+        welcome_message_sent: config.send_welcome_message,
+        welcome_message_length: config.welcome_message?.length || 0,
+      },
+      creation_metrics: {
+        created_timestamp: channel?.created,
+        creator_id: channel?.creator,
+        channel_type: config.is_private ? 'private' : 'public',
+      },
+      recommendations: this.generateChannelRecommendations(config, invitedUsers),
+    };
+  },
+
+  // Helper method to generate channel recommendations
+  generateChannelRecommendations(config: SlackCreateChannelArgs, invitedUsers: string[]): string[] {
+    const recommendations = [];
+
+    if (!config.topic) {
+      recommendations.push('Consider adding a topic to help users understand the channel purpose');
+    }
+
+    if (!config.purpose) {
+      recommendations.push('Adding a purpose can provide more context about the channel\'s intended use');
+    }
+
+    if (invitedUsers.length === 0 && !config.is_private) {
+      recommendations.push('Consider inviting relevant team members to get the conversation started');
+    }
+
+    if (!config.send_welcome_message) {
+      recommendations.push('A welcome message can help set expectations and encourage participation');
+    }
+
+    if (config.name.length < 3) {
+      recommendations.push('Longer channel names are often more descriptive and easier to find');
+    }
+
+    return recommendations;
   },
 };

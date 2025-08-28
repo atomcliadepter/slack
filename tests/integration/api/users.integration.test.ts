@@ -1,5 +1,5 @@
 
-import { slackSetStatusTool } from '../../../../src/tools/slackSetStatus';
+import { slackSetStatusTool } from '../../../src/tools/slackSetStatus';
 import { skipIntegration, mockValidArgs, mockInvalidArgs, delay } from './testUtils';
 
 const describeOrSkip = skipIntegration ? describe.skip : describe;

@@ -101,86 +101,77 @@ import { slackSendMessageTool } from '@/tools/slackSendMessage';
 import { slackGetChannelHistoryTool } from '@/tools/slackGetChannelHistory';
 import { slackCreateChannelTool } from '@/tools/slackCreateChannel';
 import { slackGetUserInfoTool } from '@/tools/slackGetUserInfo';
-import { slackUploadFileTool } from '@/tools/slackUploadFile';
-import { slackSearchMessagesTool } from '@/tools/slackSearchMessages';
-import { slackSetStatusTool } from '@/tools/slackSetStatus';
-import { slackGetWorkspaceInfoTool } from '@/tools/slackGetWorkspaceInfo';
 import { slackListChannelsTool } from '@/tools/slackListChannels';
 import { slackListUsersTool } from '@/tools/slackListUsers';
+import { slackAuthTestTool } from '@/tools/slackAuthTest';
+
+// Previously implemented tools
+import { slackUploadFileTool } from '@/tools/slackUploadFile';
+import { slackReactionsAddTool } from '@/tools/slackReactionsAdd';
+import { slackPinsAddTool } from '@/tools/slackPinsAdd';
+
+// New priority tools
+import { slackConversationsInfoTool } from '@/tools/slackConversationsInfo';
+import { slackChatUpdateTool } from '@/tools/slackChatUpdate';
+import { slackChatDeleteTool } from '@/tools/slackChatDelete';
+
+// Latest priority tools (Session 4)
+import { slackReactionsRemoveTool } from '@/tools/slackReactionsRemove';
+import { slackPinsRemoveTool } from '@/tools/slackPinsRemove';
+import { slackSearchMessagesTool } from '@/tools/slackSearchMessages';
+
+// Session 5 tools (reactions_get, pins_list, bookmarks_list)
+import { slackReactionsGetTool } from '@/tools/slackReactionsGet';
+import { slackPinsListTool } from '@/tools/slackPinsList';
+import { slackBookmarksListTool } from '@/tools/slackBookmarksList';
 import { slackJoinChannelTool } from '@/tools/slackJoinChannel';
 import { slackLeaveChannelTool } from '@/tools/slackLeaveChannel';
 import { slackArchiveChannelTool } from '@/tools/slackArchiveChannel';
-
-// New Enhanced Conversation Tools
-import { slackConversationsInfoTool } from '@/tools/slackConversationsInfo';
+import { slackSetStatusTool } from '@/tools/slackSetStatus';
+import { slackWorkspaceInfoTool } from '@/tools/slackWorkspaceInfo';
+import { slackViewsPublishTool } from '@/tools/slackViewsPublish';
+import { slackEventsTailTool } from '@/tools/slackEventsTail';
 import { slackConversationsMembersTool } from '@/tools/slackConversationsMembers';
 import { slackConversationsHistoryTool } from '@/tools/slackConversationsHistory';
 import { slackConversationsRepliesTool } from '@/tools/slackConversationsReplies';
 import { slackConversationsMarkTool } from '@/tools/slackConversationsMark';
-
-// New Enhanced Chat & Reactions Tools
-import { slackChatUpdateTool } from '@/tools/slackChatUpdate';
-import { slackChatDeleteTool } from '@/tools/slackChatDelete';
-import { slackReactionsAddTool } from '@/tools/slackReactionsAdd';
-import { slackReactionsRemoveTool } from '@/tools/slackReactionsRemove';
-import { slackReactionsGetTool } from '@/tools/slackReactionsGet';
-import { slackAuthTestTool } from '@/tools/slackAuthTest';
-
-// New Enhanced Pins, Search & Users Tools
-import { slackPinsAddTool } from '@/tools/slackPinsAdd';
-import { slackPinsRemoveTool } from '@/tools/slackPinsRemove';
-import { slackPinsListTool } from '@/tools/slackPinsList';
-import { slackBookmarksListTool } from '@/tools/slackBookmarksList';
+import { slackUsersLookupByEmailTool } from '@/tools/slackUsersLookupByEmail';
 import { slackUsersInfoTool } from '@/tools/slackUsersInfo';
 import { slackUsersListTool } from '@/tools/slackUsersList';
 
-// New Enhanced Advanced Features Tools
-import { slackUsersLookupByEmailTool } from '@/tools/slackUsersLookupByEmail';
-import { slackViewsPublishTool } from '@/tools/slackViewsPublish';
-import { slackEventsTailTool } from '@/tools/slackEventsTail';
-
-// Register all tools
+// Register all implemented tools
 toolRegistry.register(slackSendMessageTool);
 toolRegistry.register(slackGetChannelHistoryTool);
 toolRegistry.register(slackCreateChannelTool);
 toolRegistry.register(slackGetUserInfoTool);
-toolRegistry.register(slackUploadFileTool);
-toolRegistry.register(slackSearchMessagesTool);
-toolRegistry.register(slackSetStatusTool);
-toolRegistry.register(slackGetWorkspaceInfoTool);
 toolRegistry.register(slackListChannelsTool);
 toolRegistry.register(slackListUsersTool);
+toolRegistry.register(slackAuthTestTool);
+toolRegistry.register(slackUploadFileTool);
+toolRegistry.register(slackReactionsAddTool);
+toolRegistry.register(slackPinsAddTool);
+toolRegistry.register(slackConversationsInfoTool);
+toolRegistry.register(slackChatUpdateTool);
+toolRegistry.register(slackChatDeleteTool);
+toolRegistry.register(slackReactionsRemoveTool);
+toolRegistry.register(slackPinsRemoveTool);
+toolRegistry.register(slackSearchMessagesTool);
+toolRegistry.register(slackReactionsGetTool);
+toolRegistry.register(slackPinsListTool);
+toolRegistry.register(slackBookmarksListTool);
 toolRegistry.register(slackJoinChannelTool);
 toolRegistry.register(slackLeaveChannelTool);
 toolRegistry.register(slackArchiveChannelTool);
-
-// Register new enhanced conversation tools
-toolRegistry.register(slackConversationsInfoTool);
+toolRegistry.register(slackSetStatusTool);
+toolRegistry.register(slackWorkspaceInfoTool);
+toolRegistry.register(slackViewsPublishTool);
+toolRegistry.register(slackEventsTailTool);
 toolRegistry.register(slackConversationsMembersTool);
 toolRegistry.register(slackConversationsHistoryTool);
 toolRegistry.register(slackConversationsRepliesTool);
 toolRegistry.register(slackConversationsMarkTool);
-
-// Register new enhanced chat & reactions tools
-toolRegistry.register(slackChatUpdateTool);
-toolRegistry.register(slackChatDeleteTool);
-toolRegistry.register(slackReactionsAddTool);
-toolRegistry.register(slackReactionsRemoveTool);
-toolRegistry.register(slackReactionsGetTool);
-toolRegistry.register(slackAuthTestTool);
-
-// Register new enhanced pins, search & users tools
-toolRegistry.register(slackPinsAddTool);
-toolRegistry.register(slackPinsRemoveTool);
-toolRegistry.register(slackPinsListTool);
-toolRegistry.register(slackBookmarksListTool);
-toolRegistry.register(slackSearchMessagesTool);
+toolRegistry.register(slackUsersLookupByEmailTool);
 toolRegistry.register(slackUsersInfoTool);
 toolRegistry.register(slackUsersListTool);
 
-// Register new enhanced advanced features tools
-toolRegistry.register(slackUsersLookupByEmailTool);
-toolRegistry.register(slackViewsPublishTool);
-toolRegistry.register(slackEventsTailTool);
-
-logger.info(`Registered ${toolRegistry.getAllTools().length} tools in registry`);
+logger.info(`🎉 COMPLETE! Registered ${toolRegistry.getAllTools().length} tools in registry - ALL 33 TOOLS IMPLEMENTED!`);

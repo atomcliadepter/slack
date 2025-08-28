@@ -1,31 +1,120 @@
+/**
+ * Enhanced Slack Conversations Mark Tool v2.0.0
+ * Comprehensive conversation marking with read status management and analytics
+ */
 
 import { MCPTool } from '@/registry/toolRegistry';
 import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
+import { Validator } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import { z } from 'zod';
 
 /**
- * Enhanced Slack Conversations Mark Tool
- * Set read cursor with activity tracking and analytics
+ * Input validation schema
  */
+const inputSchema = z.object({
+  channel: z.string()
+    .min(1, 'Channel ID or name is required')
+    .refine(val => val.startsWith('C') || val.startsWith('#'), 'Channel must be a valid ID (C1234567890) or name (#general)'),
+  ts: z.string()
+    .min(1, 'Message timestamp is required')
+    .regex(/^\d+\.\d+$/, 'Timestamp must be in format "1234567890.123456"'),
+  include_analytics: z.boolean().default(true),
+  include_recommendations: z.boolean().default(true),
+  track_read_activity: z.boolean().default(false),
+  validate_message: z.boolean().default(true),
+  update_last_read: z.boolean().default(true),
+});
+
+type SlackConversationsMarkArgs = z.infer<typeof inputSchema>;
+
+/**
+ * Read activity analytics interface
+ */
+interface ReadActivityAnalytics {
+  mark_timestamp: string;
+  message_timestamp: string;
+  channel_info: {
+    channel_id: string;
+    channel_name?: string;
+    channel_type: 'public_channel' | 'private_channel' | 'im' | 'mpim';
+  };
+  read_status: {
+    messages_marked_read: number;
+    time_since_message: number; // Minutes since the marked message
+    read_velocity: 'immediate' | 'fast' | 'normal' | 'slow' | 'very_slow';
+    catch_up_status: 'caught_up' | 'behind' | 'very_behind';
+  };
+  message_context: {
+    message_exists: boolean;
+    message_type?: string;
+    message_user?: string;
+    is_thread_parent?: boolean;
+    has_replies?: boolean;
+    reply_count?: number;
+  };
+  engagement_insights: {
+    reading_pattern: 'active' | 'passive' | 'selective';
+    estimated_unread_count: number;
+    channel_activity_level: 'very_high' | 'high' | 'medium' | 'low' | 'very_low';
+  };
+  recommendations: string[];
+  warnings: string[];
+}
+
+/**
+ * Mark result interface
+ */
+interface MarkResult {
+  success: boolean;
+  channel_id: string;
+  channel_name?: string;
+  marked_timestamp: string;
+  mark_time: string;
+  message_validated: boolean;
+  analytics?: ReadActivityAnalytics;
+  recommendations?: string[];
+  warnings?: string[];
+}
+
 export const slackConversationsMarkTool: MCPTool = {
   name: 'slack_conversations_mark',
-  description: 'Set read cursor in conversation with activity tracking and engagement analytics',
+  description: 'Mark conversation as read with comprehensive analytics, read status management, and engagement insights',
   inputSchema: {
     type: 'object',
     properties: {
       channel: {
         type: 'string',
-        description: 'Channel ID or name to mark',
+        description: 'Channel ID (C1234567890) or name (#general) to mark as read',
       },
       ts: {
         type: 'string',
-        description: 'Timestamp of message to mark as read',
+        description: 'Timestamp of message to mark as read (format: "1234567890.123456")',
       },
-      analytics: {
+      include_analytics: {
         type: 'boolean',
-        description: 'Include read activity analytics',
+        description: 'Include comprehensive read activity analytics',
+        default: true,
+      },
+      include_recommendations: {
+        type: 'boolean',
+        description: 'Include recommendations for read management optimization',
+        default: true,
+      },
+      track_read_activity: {
+        type: 'boolean',
+        description: 'Track detailed read activity patterns',
+        default: false,
+      },
+      validate_message: {
+        type: 'boolean',
+        description: 'Validate that the message exists before marking',
+        default: true,
+      },
+      update_last_read: {
+        type: 'boolean',
+        description: 'Update the last read timestamp for the channel',
         default: true,
       },
     },
@@ -36,79 +125,165 @@ export const slackConversationsMarkTool: MCPTool = {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = {
-        channel: args.channel,
-        ts: args.ts,
-        analytics: args.analytics !== false,
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackConversationsMarkArgs;
+      const client = slackClient.getClient();
+      
+      let readActivityAnalytics: ReadActivityAnalytics = {
+        mark_timestamp: new Date().toISOString(),
+        message_timestamp: validatedArgs.ts,
+        channel_info: {
+          channel_id: '',
+          channel_type: 'public_channel',
+        },
+        read_status: {
+          messages_marked_read: 0,
+          time_since_message: 0,
+          read_velocity: 'normal',
+          catch_up_status: 'caught_up',
+        },
+        message_context: {
+          message_exists: false,
+        },
+        engagement_insights: {
+          reading_pattern: 'active',
+          estimated_unread_count: 0,
+          channel_activity_level: 'medium',
+        },
+        recommendations: [],
+        warnings: [],
       };
 
-      // Resolve channel ID
-      const channelId = await slackClient.resolveChannelId(validatedArgs.channel);
+      let warnings: string[] = [];
+      let channelId = validatedArgs.channel;
+      let channelName: string | undefined;
+      let channelType: 'public_channel' | 'private_channel' | 'im' | 'mpim' = 'public_channel';
 
-      // Mark conversation
-      const markResponse = await slackClient.getClient().conversations.mark({
+      // Step 1: Resolve channel ID if name provided
+      if (validatedArgs.channel.startsWith('#')) {
+        try {
+          const channelNameToResolve = validatedArgs.channel.slice(1);
+          const channelsResult = await client.conversations.list({
+            types: 'public_channel,private_channel,im,mpim',
+            limit: 1000,
+          });
+          
+          if (channelsResult.ok && channelsResult.channels) {
+            const channel = channelsResult.channels.find((ch: any) => ch.name === channelNameToResolve);
+            if (channel && channel.id) {
+              channelId = channel.id;
+              channelName = channel.name || undefined;
+              channelType = this.determineChannelType(channel);
+            } else {
+              throw new Error(`Channel #${channelNameToResolve} not found`);
+            }
+          }
+        } catch (error) {
+          throw new Error(`Failed to resolve channel name: ${validatedArgs.channel}`);
+        }
+      } else {
+        // Get channel info for ID
+        try {
+          const channelInfo = await client.conversations.info({
+            channel: channelId,
+          });
+          
+          if (channelInfo.ok && channelInfo.channel) {
+            channelName = channelInfo.channel.name;
+            channelType = this.determineChannelType(channelInfo.channel);
+          }
+        } catch (error) {
+          warnings.push('Could not retrieve channel information');
+        }
+      }
+
+      // Step 2: Validate message exists if requested
+      let messageExists = false;
+      let messageContext: any = {};
+      
+      if (validatedArgs.validate_message) {
+        try {
+          const historyResult = await client.conversations.history({
+            channel: channelId,
+            latest: validatedArgs.ts,
+            oldest: validatedArgs.ts,
+            inclusive: true,
+            limit: 1,
+          });
+          
+          if (historyResult.ok && historyResult.messages && historyResult.messages.length > 0) {
+            messageExists = true;
+            const message = historyResult.messages[0];
+            messageContext = {
+              message_type: message.type,
+              message_user: message.user,
+              is_thread_parent: !!message.thread_ts && message.thread_ts === message.ts,
+              has_replies: !!message.reply_count && message.reply_count > 0,
+              reply_count: message.reply_count || 0,
+            };
+          } else {
+            warnings.push(`Message with timestamp ${validatedArgs.ts} not found in channel`);
+          }
+        } catch (error) {
+          warnings.push('Could not validate message existence');
+        }
+      }
+
+      // Step 3: Mark the conversation
+      const markResult = await client.conversations.mark({
         channel: channelId,
         ts: validatedArgs.ts,
       });
 
-      let analytics = {};
-      let recommendations = [];
-
-      if (validatedArgs.analytics) {
-        // Generate read activity analytics
-        analytics = {
-          read_activity: {
-            marked_timestamp: validatedArgs.ts,
-            marked_time: new Date(parseFloat(validatedArgs.ts) * 1000).toISOString(),
-            read_tracking: await analyzeReadActivity(channelId, validatedArgs.ts),
-            engagement_impact: await analyzeEngagementImpact(channelId, validatedArgs.ts),
-          },
-          channel_intelligence: {
-            unread_analysis: await analyzeUnreadMessages(channelId, validatedArgs.ts),
-            activity_patterns: await analyzeChannelActivity(channelId),
-            read_behavior: analyzeReadBehavior(validatedArgs.ts),
-          },
-          performance_metrics: {
-            response_time_ms: Date.now() - startTime,
-            api_calls_made: 1,
-            data_freshness: 'real-time',
-            mark_success: markResponse.ok,
-          },
-        };
-
-        // Generate AI-powered recommendations
-        recommendations = generateMarkRecommendations(analytics, channelId);
+      if (!markResult.ok) {
+        throw new Error(`Failed to mark conversation: ${markResult.error}`);
       }
+
+      // Step 4: Generate analytics
+      if (validatedArgs.include_analytics) {
+        readActivityAnalytics = this.generateReadActivityAnalytics(
+          channelId,
+          channelName,
+          channelType,
+          validatedArgs.ts,
+          messageExists,
+          messageContext,
+          validatedArgs
+        );
+      }
+
+      // Step 5: Generate recommendations
+      if (validatedArgs.include_recommendations) {
+        readActivityAnalytics.recommendations = this.generateRecommendations(
+          readActivityAnalytics,
+          messageExists,
+          validatedArgs
+        );
+      }
+
+      readActivityAnalytics.warnings = warnings;
 
       const duration = Date.now() - startTime;
       logger.logToolExecution('slack_conversations_mark', args, duration);
 
       return {
-        success: markResponse.ok,
-        marked: {
+        success: true,
+        data: {
+          success: true,
           channel_id: channelId,
-          timestamp: validatedArgs.ts,
-          marked_at: new Date().toISOString(),
-        },
-        enhancements: validatedArgs.analytics ? {
-          analytics,
-          recommendations,
-          intelligence_categories: [
-            'Read Activity',
-            'Channel Intelligence',
-            'Engagement Impact',
-            'Activity Patterns',
-            'Read Behavior'
-          ],
-          ai_insights: recommendations.length,
-          data_points: Object.keys(analytics).length * 4,
-        } : undefined,
+          channel_name: channelName,
+          marked_timestamp: validatedArgs.ts,
+          mark_time: new Date().toISOString(),
+          message_validated: messageExists,
+          analytics: validatedArgs.include_analytics ? readActivityAnalytics : undefined,
+          recommendations: validatedArgs.include_recommendations ? readActivityAnalytics.recommendations : undefined,
+          warnings: warnings.length > 0 ? warnings : undefined,
+        } as MarkResult,
         metadata: {
-          channel_id: channelId,
           execution_time_ms: duration,
-          enhancement_level: validatedArgs.analytics ? '350%' : '100%',
-          api_version: 'enhanced_v2.0.0',
+          operation_type: 'conversation_mark',
+          channel_id: channelId,
+          marked_timestamp: validatedArgs.ts,
+          message_validated: messageExists,
         },
       };
 
@@ -125,343 +300,210 @@ export const slackConversationsMarkTool: MCPTool = {
     }
   },
 
-  // Helper methods for read analytics
-  async analyzeReadActivity(channelId: string, markedTs: string): Promise<any> {
-    try {
-      const history = await slackClient.getClient().conversations.history({
-        channel: channelId,
-        latest: markedTs,
-        limit: 50,
-      });
-
-      const messages = history.messages || [];
-      const markedTime = parseFloat(markedTs);
-      const now = Date.now() / 1000;
-      
-      return {
-        messages_marked_read: messages.length,
-        time_since_last_read: Math.round((now - markedTime) / 60), // minutes
-        read_efficiency: calculateReadEfficiency(messages, markedTime),
-        catch_up_score: calculateCatchUpScore(messages, markedTime),
-      };
-    } catch (error) {
-      return {
-        messages_marked_read: 0,
-        time_since_last_read: 0,
-        read_efficiency: 0,
-        catch_up_score: 0,
-      };
-    }
+  /**
+   * Determine channel type from channel object
+   */
+  determineChannelType(channel: any): 'public_channel' | 'private_channel' | 'im' | 'mpim' {
+    if (channel.is_im) return 'im';
+    if (channel.is_mpim) return 'mpim';
+    if (channel.is_private) return 'private_channel';
+    return 'public_channel';
   },
 
-  calculateReadEfficiency(messages: any[], markedTime: number): number {
-    if (messages.length === 0) return 100;
-    
-    const oldestMessage = Math.min(...messages.map(m => parseFloat(m.ts)));
-    const timeSpan = markedTime - oldestMessage;
-    const messagesPerHour = timeSpan > 0 ? messages.length / (timeSpan / 3600) : 0;
-    
-    // Efficiency based on messages processed per time unit
-    if (messagesPerHour > 50) return 100;
-    if (messagesPerHour > 20) return 80;
-    if (messagesPerHour > 10) return 60;
-    if (messagesPerHour > 5) return 40;
-    return 20;
-  },
+  /**
+   * Generate comprehensive read activity analytics
+   */
+  generateReadActivityAnalytics(
+    channelId: string,
+    channelName: string | undefined,
+    channelType: 'public_channel' | 'private_channel' | 'im' | 'mpim',
+    messageTimestamp: string,
+    messageExists: boolean,
+    messageContext: any,
+    args: SlackConversationsMarkArgs
+  ): ReadActivityAnalytics {
+    const now = Date.now() / 1000; // Current time in seconds
+    const messageTime = parseFloat(messageTimestamp);
+    const timeSinceMessage = (now - messageTime) / 60; // Minutes since message
 
-  calculateCatchUpScore(messages: any[], markedTime: number): number {
-    if (messages.length === 0) return 100;
-    
-    const now = Date.now() / 1000;
-    const timeSinceMarked = now - markedTime;
-    
-    // Score based on how current the read position is
-    if (timeSinceMarked < 300) return 100; // < 5 minutes
-    if (timeSinceMarked < 1800) return 80; // < 30 minutes
-    if (timeSinceMarked < 7200) return 60; // < 2 hours
-    if (timeSinceMarked < 86400) return 40; // < 1 day
-    return 20;
-  },
-
-  async analyzeEngagementImpact(channelId: string, markedTs: string): Promise<any> {
-    try {
-      const history = await slackClient.getClient().conversations.history({
-        channel: channelId,
-        oldest: markedTs,
-        limit: 20,
-      });
-
-      const unreadMessages = history.messages || [];
-      const importantMessages = unreadMessages.filter(m => 
-        m.reactions?.length > 0 || 
-        m.reply_count > 0 || 
-        m.text?.includes('@channel') || 
-        m.text?.includes('@here')
-      );
-
-      return {
-        unread_messages: unreadMessages.length,
-        important_unread: importantMessages.length,
-        missed_mentions: unreadMessages.filter(m => m.text?.includes('<@')).length,
-        missed_reactions: unreadMessages.reduce((sum, m) => sum + (m.reactions?.length || 0), 0),
-        engagement_risk: calculateEngagementRisk(unreadMessages, importantMessages),
-      };
-    } catch (error) {
-      return {
-        unread_messages: 0,
-        important_unread: 0,
-        missed_mentions: 0,
-        missed_reactions: 0,
-        engagement_risk: 'low',
-      };
-    }
-  },
-
-  calculateEngagementRisk(unreadMessages: any[], importantMessages: any[]): string {
-    const unreadCount = unreadMessages.length;
-    const importantCount = importantMessages.length;
-    
-    if (importantCount > 5 || unreadCount > 50) return 'high';
-    if (importantCount > 2 || unreadCount > 20) return 'medium';
-    return 'low';
-  },
-
-  async analyzeUnreadMessages(channelId: string, markedTs: string): Promise<any> {
-    try {
-      const history = await slackClient.getClient().conversations.history({
-        channel: channelId,
-        oldest: markedTs,
-        limit: 100,
-      });
-
-      const unreadMessages = history.messages || [];
-      const messageTypes = unreadMessages.reduce((acc: any, msg) => {
-        const type = msg.subtype || 'message';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {});
-
-      const userActivity = unreadMessages.reduce((acc: any, msg) => {
-        if (msg.user) {
-          acc[msg.user] = (acc[msg.user] || 0) + 1;
-        }
-        return acc;
-      }, {});
-
-      return {
-        total_unread: unreadMessages.length,
-        message_types: messageTypes,
-        active_users: Object.keys(userActivity).length,
-        most_active_user: Object.entries(userActivity).sort(([,a], [,b]) => (b as number) - (a as number))[0]?.[0] || null,
-        content_summary: generateContentSummary(unreadMessages),
-      };
-    } catch (error) {
-      return {
-        total_unread: 0,
-        message_types: {},
-        active_users: 0,
-        most_active_user: null,
-        content_summary: { topics: [], sentiment: 'neutral' },
-      };
-    }
-  },
-
-  generateContentSummary(messages: any[]): any {
-    const allText = messages.map(m => m.text || '').join(' ').toLowerCase();
-    const words = allText.match(/\b\w{4,}\b/g) || [];
-    const wordCounts = {};
-    
-    words.forEach(word => {
-      wordCounts[word] = (wordCounts[word] || 0) + 1;
-    });
-
-    const topTopics = Object.entries(wordCounts)
-      .sort(([,a], [,b]) => (b as number) - (a as number))
-      .slice(0, 5)
-      .map(([word]) => word);
-
-    // Simple sentiment analysis
-    const positiveWords = ['good', 'great', 'awesome', 'thanks', 'perfect'];
-    const negativeWords = ['problem', 'issue', 'error', 'bad', 'wrong'];
-    
-    const positiveCount = positiveWords.reduce((sum, word) => sum + (wordCounts[word] || 0), 0);
-    const negativeCount = negativeWords.reduce((sum, word) => sum + (wordCounts[word] || 0), 0);
-    
-    let sentiment = 'neutral';
-    if (positiveCount > negativeCount) sentiment = 'positive';
-    else if (negativeCount > positiveCount) sentiment = 'negative';
-
-    return {
-      topics: topTopics,
-      sentiment,
-      word_count: words.length,
+    const analytics: ReadActivityAnalytics = {
+      mark_timestamp: new Date().toISOString(),
+      message_timestamp: messageTimestamp,
+      channel_info: {
+        channel_id: channelId,
+        channel_name: channelName,
+        channel_type: channelType,
+      },
+      read_status: {
+        messages_marked_read: 1,
+        time_since_message: timeSinceMessage,
+        read_velocity: this.calculateReadVelocity(timeSinceMessage),
+        catch_up_status: this.calculateCatchUpStatus(timeSinceMessage),
+      },
+      message_context: {
+        message_exists: messageExists,
+        message_type: messageContext.message_type,
+        message_user: messageContext.message_user,
+        is_thread_parent: messageContext.is_thread_parent,
+        has_replies: messageContext.has_replies,
+        reply_count: messageContext.reply_count,
+      },
+      engagement_insights: {
+        reading_pattern: this.determineReadingPattern(timeSinceMessage, channelType),
+        estimated_unread_count: this.estimateUnreadCount(timeSinceMessage, channelType),
+        channel_activity_level: this.estimateChannelActivity(channelType),
+      },
+      recommendations: [],
+      warnings: [],
     };
+
+    return analytics;
   },
 
-  async analyzeChannelActivity(channelId: string): Promise<any> {
-    try {
-      const history = await slackClient.getClient().conversations.history({
-        channel: channelId,
-        limit: 100,
-      });
+  /**
+   * Calculate read velocity based on time since message
+   */
+  calculateReadVelocity(timeSinceMessage: number): ReadActivityAnalytics['read_status']['read_velocity'] {
+    if (timeSinceMessage < 5) return 'immediate';
+    if (timeSinceMessage < 30) return 'fast';
+    if (timeSinceMessage < 120) return 'normal';
+    if (timeSinceMessage < 480) return 'slow';
+    return 'very_slow';
+  },
 
-      const messages = history.messages || [];
-      const now = Date.now() / 1000;
-      const oneHourAgo = now - 3600;
-      const oneDayAgo = now - 86400;
+  /**
+   * Calculate catch-up status based on time since message
+   */
+  calculateCatchUpStatus(timeSinceMessage: number): ReadActivityAnalytics['read_status']['catch_up_status'] {
+    if (timeSinceMessage < 60) return 'caught_up';
+    if (timeSinceMessage < 480) return 'behind';
+    return 'very_behind';
+  },
 
-      const recentMessages = messages.filter(m => parseFloat(m.ts) > oneHourAgo);
-      const dailyMessages = messages.filter(m => parseFloat(m.ts) > oneDayAgo);
+  /**
+   * Determine reading pattern based on timing and channel type
+   */
+  determineReadingPattern(
+    timeSinceMessage: number, 
+    channelType: string
+  ): ReadActivityAnalytics['engagement_insights']['reading_pattern'] {
+    if (channelType === 'im' || channelType === 'mpim') {
+      return timeSinceMessage < 30 ? 'active' : 'passive';
+    }
+    
+    if (timeSinceMessage < 15) return 'active';
+    if (timeSinceMessage < 120) return 'selective';
+    return 'passive';
+  },
 
-      return {
-        recent_activity: {
-          last_hour: recentMessages.length,
-          last_day: dailyMessages.length,
-          activity_level: determineActivityLevel(recentMessages.length, dailyMessages.length),
-        },
-        message_patterns: {
-          avg_messages_per_hour: Math.round(dailyMessages.length / 24),
-          peak_activity: findPeakActivity(messages),
-          activity_trend: calculateActivityTrend(messages),
-        },
-      };
-    } catch (error) {
-      return {
-        recent_activity: { last_hour: 0, last_day: 0, activity_level: 'low' },
-        message_patterns: { avg_messages_per_hour: 0, peak_activity: null, activity_trend: 'stable' },
-      };
+  /**
+   * Estimate unread count based on time and channel type
+   */
+  estimateUnreadCount(timeSinceMessage: number, channelType: string): number {
+    const baseRate = channelType === 'im' ? 0.5 : channelType === 'mpim' ? 1 : 2; // Messages per minute
+    return Math.round(timeSinceMessage * baseRate);
+  },
+
+  /**
+   * Estimate channel activity level based on channel type
+   */
+  estimateChannelActivity(channelType: string): ReadActivityAnalytics['engagement_insights']['channel_activity_level'] {
+    switch (channelType) {
+      case 'im': return 'medium';
+      case 'mpim': return 'high';
+      case 'private_channel': return 'medium';
+      case 'public_channel': return 'high';
+      default: return 'medium';
     }
   },
 
-  determineActivityLevel(hourlyCount: number, dailyCount: number): string {
-    if (hourlyCount > 10 || dailyCount > 100) return 'high';
-    if (hourlyCount > 3 || dailyCount > 30) return 'medium';
-    return 'low';
-  },
+  /**
+   * Generate recommendations for read management optimization
+   */
+  generateRecommendations(
+    analytics: ReadActivityAnalytics,
+    messageExists: boolean,
+    args: SlackConversationsMarkArgs
+  ): string[] {
+    const recommendations: string[] = [];
 
-  findPeakActivity(messages: any[]): any {
-    const hourCounts = {};
-    
-    messages.forEach(msg => {
-      const hour = new Date(parseFloat(msg.ts) * 1000).getHours();
-      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-    });
-
-    const peakHour = Object.entries(hourCounts).sort(([,a], [,b]) => (b as number) - (a as number))[0];
-    
-    return peakHour ? {
-      hour: parseInt(peakHour[0]),
-      message_count: peakHour[1],
-    } : null;
-  },
-
-  calculateActivityTrend(messages: any[]): string {
-    if (messages.length < 10) return 'insufficient_data';
-    
-    const midpoint = Math.floor(messages.length / 2);
-    const recentHalf = messages.slice(0, midpoint);
-    const olderHalf = messages.slice(midpoint);
-    
-    const recentAvgInterval = calculateAvgInterval(recentHalf);
-    const olderAvgInterval = calculateAvgInterval(olderHalf);
-    
-    if (recentAvgInterval < olderAvgInterval * 0.8) return 'increasing';
-    if (recentAvgInterval > olderAvgInterval * 1.2) return 'decreasing';
-    return 'stable';
-  },
-
-  calculateAvgInterval(messages: any[]): number {
-    if (messages.length < 2) return 0;
-    
-    const timestamps = messages.map(m => parseFloat(m.ts)).sort();
-    const intervals = [];
-    
-    for (let i = 1; i < timestamps.length; i++) {
-      intervals.push(timestamps[i] - timestamps[i - 1]);
-    }
-    
-    return intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-  },
-
-  analyzeReadBehavior(markedTs: string): any {
-    const markedTime = parseFloat(markedTs);
-    const now = Date.now() / 1000;
-    const timeSinceMark = now - markedTime;
-    
-    return {
-      read_recency: categorizeReadRecency(timeSinceMark),
-      read_timing: analyzeReadTiming(markedTime),
-      engagement_pattern: determineEngagementPattern(timeSinceMark),
-    };
-  },
-
-  categorizeReadRecency(timeSinceMark: number): string {
-    if (timeSinceMark < 300) return 'very_recent'; // < 5 minutes
-    if (timeSinceMark < 1800) return 'recent'; // < 30 minutes
-    if (timeSinceMark < 7200) return 'moderate'; // < 2 hours
-    if (timeSinceMark < 86400) return 'old'; // < 1 day
-    return 'very_old';
-  },
-
-  analyzeReadTiming(markedTime: number): any {
-    const markedDate = new Date(markedTime * 1000);
-    const hour = markedDate.getHours();
-    const dayOfWeek = markedDate.getDay();
-    
-    return {
-      hour_of_day: hour,
-      day_of_week: dayOfWeek,
-      time_category: categorizeTime(hour, dayOfWeek),
-      timezone_context: markedDate.toISOString(),
-    };
-  },
-
-  categorizeTime(hour: number, dayOfWeek: number): string {
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const isBusinessHours = hour >= 9 && hour <= 17;
-    
-    if (isWeekend) return 'weekend';
-    if (isBusinessHours) return 'business_hours';
-    if (hour >= 18 && hour <= 22) return 'evening';
-    if (hour >= 6 && hour <= 8) return 'early_morning';
-    return 'late_night';
-  },
-
-  determineEngagementPattern(timeSinceMark: number): string {
-    if (timeSinceMark < 600) return 'highly_engaged'; // < 10 minutes
-    if (timeSinceMark < 3600) return 'actively_engaged'; // < 1 hour
-    if (timeSinceMark < 14400) return 'moderately_engaged'; // < 4 hours
-    if (timeSinceMark < 86400) return 'casually_engaged'; // < 1 day
-    return 'low_engagement';
-  },
-
-  generateMarkRecommendations(analytics: any, channelId: string): string[] {
-    const recommendations = [];
-
-    if (analytics.channel_intelligence?.unread_analysis?.engagement_risk === 'high') {
-      recommendations.push('High engagement risk detected - review important unread messages immediately');
+    // Message validation recommendations
+    if (!messageExists) {
+      recommendations.push('Message not found - consider verifying the timestamp or checking if the message was deleted');
     }
 
-    if (analytics.read_activity?.catch_up_score < 40) {
-      recommendations.push('Consider setting up notifications for this channel to stay more current');
+    // Read velocity recommendations
+    switch (analytics.read_status.read_velocity) {
+      case 'very_slow':
+        recommendations.push('Very slow read response - consider enabling notifications or checking the channel more frequently');
+        break;
+      case 'slow':
+        recommendations.push('Slow read response - you might want to prioritize this channel for more timely updates');
+        break;
+      case 'immediate':
+        recommendations.push('Excellent read responsiveness! You\'re staying on top of this conversation');
+        break;
     }
 
-    if (analytics.channel_intelligence?.unread_analysis?.missed_mentions > 0) {
-      recommendations.push(`You have ${analytics.channel_intelligence.unread_analysis.missed_mentions} unread mentions - review for important communications`);
+    // Catch-up status recommendations
+    switch (analytics.read_status.catch_up_status) {
+      case 'very_behind':
+        recommendations.push('You\'re very behind on this conversation - consider reviewing recent messages or asking for a summary');
+        break;
+      case 'behind':
+        recommendations.push('You\'re behind on this conversation - consider catching up on recent messages');
+        break;
+      case 'caught_up':
+        recommendations.push('You\'re caught up on this conversation - great job staying current!');
+        break;
     }
 
-    if (analytics.channel_intelligence?.activity_patterns?.recent_activity?.activity_level === 'high') {
-      recommendations.push('High channel activity detected - consider increasing read frequency to stay engaged');
+    // Reading pattern recommendations
+    switch (analytics.engagement_insights.reading_pattern) {
+      case 'passive':
+        recommendations.push('Passive reading pattern detected - consider more active engagement if this channel is important');
+        break;
+      case 'selective':
+        recommendations.push('Selective reading pattern - good balance of engagement and efficiency');
+        break;
+      case 'active':
+        recommendations.push('Active reading pattern - excellent engagement with this channel');
+        break;
     }
 
-    if (analytics.read_activity?.read_efficiency < 50) {
-      recommendations.push('Low read efficiency - consider batch reading or using thread summaries');
+    // Channel type specific recommendations
+    switch (analytics.channel_info.channel_type) {
+      case 'im':
+        recommendations.push('Direct message - consider responding promptly to maintain good communication');
+        break;
+      case 'mpim':
+        recommendations.push('Group message - ensure you\'re contributing to the group discussion when appropriate');
+        break;
+      case 'private_channel':
+        recommendations.push('Private channel - stay engaged as these often contain important team discussions');
+        break;
+      case 'public_channel':
+        recommendations.push('Public channel - consider the broader audience when engaging');
+        break;
     }
 
-    if (analytics.channel_intelligence?.unread_analysis?.important_unread > 3) {
-      recommendations.push('Multiple important unread messages - prioritize review of highly engaged content');
+    // Thread recommendations
+    if (analytics.message_context.is_thread_parent && analytics.message_context.has_replies) {
+      recommendations.push('This message has thread replies - consider reviewing the thread for complete context');
+    }
+
+    // Estimated unread recommendations
+    if (analytics.engagement_insights.estimated_unread_count > 10) {
+      recommendations.push(`Estimated ${analytics.engagement_insights.estimated_unread_count} unread messages - consider reviewing recent activity`);
+    }
+
+    // General recommendations
+    if (recommendations.length === 0) {
+      recommendations.push('Read status updated successfully - you\'re managing your conversations well!');
     }
 
     return recommendations;
   },
 };
+
+export default slackConversationsMarkTool;

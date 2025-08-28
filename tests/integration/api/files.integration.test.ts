@@ -1,5 +1,5 @@
 
-import { slackUploadFileTool } from '../../../../src/tools/slackUploadFile';
+import { slackUploadFileTool } from '../../../src/tools/slackUploadFile';
 import { skipIntegration, mockValidArgs, mockInvalidArgs, createTestFile, cleanupTestFile } from './testUtils';
 
 const describeOrSkip = skipIntegration ? describe.skip : describe;

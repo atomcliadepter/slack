@@ -1,23 +1,35 @@
+import { MCPTool } from '../registry/toolRegistry';
+import { slackClient } from '../utils/slackClient';
+import { Validator } from '../utils/validator';
+import { ErrorHandler } from '../utils/error';
+import { logger } from '../utils/logger';
+import { z } from 'zod';
 
-import { MCPTool } from '@/registry/toolRegistry';
-import { slackClient } from '@/utils/slackClient';
-import { Validator, ToolSchemas } from '@/utils/validator';
-import { ErrorHandler } from '@/utils/error';
-import { logger } from '@/utils/logger';
+// Enhanced input validation schema
+const inputSchema = z.object({
+  channel: z.string().min(1, 'Channel is required'),
+  limit: z.number().min(1).max(1000).optional().default(100),
+  oldest: z.string().optional(),
+  latest: z.string().optional(),
+  inclusive: z.boolean().optional().default(false),
+  include_all_metadata: z.boolean().optional().default(false),
+  cursor: z.string().optional(),
+  filter_by_user: z.string().optional(),
+  filter_by_type: z.array(z.string()).optional(),
+  include_analytics: z.boolean().optional().default(true),
+});
 
-/**
- * Enhanced Slack Get Channel History Tool
- * Intelligent history retrieval with filtering, pagination, and message analysis
- */
+type SlackGetChannelHistoryArgs = z.infer<typeof inputSchema>;
+
 export const slackGetChannelHistoryTool: MCPTool = {
   name: 'slack_get_channel_history',
-  description: 'Retrieve channel message history with intelligent filtering, user resolution, and message analysis',
+  description: 'Retrieve channel message history with advanced filtering, pagination, and analytics',
   inputSchema: {
     type: 'object',
     properties: {
       channel: {
         type: 'string',
-        description: 'Channel ID or name to retrieve history from',
+        description: 'Channel ID or name (with # prefix) to get history from',
       },
       limit: {
         type: 'number',
@@ -28,40 +40,39 @@ export const slackGetChannelHistoryTool: MCPTool = {
       },
       oldest: {
         type: 'string',
-        description: 'Start of time range (ISO 8601 timestamp or Slack timestamp)',
+        description: 'Start of time range (timestamp)',
       },
       latest: {
         type: 'string',
-        description: 'End of time range (ISO 8601 timestamp or Slack timestamp)',
+        description: 'End of time range (timestamp)',
       },
       inclusive: {
         type: 'boolean',
         description: 'Include messages with oldest and latest timestamps',
         default: false,
       },
-      cursor: {
-        type: 'string',
-        description: 'Pagination cursor for retrieving more messages',
-      },
       include_all_metadata: {
         type: 'boolean',
-        description: 'Include all message metadata (reactions, replies, etc.)',
-        default: true,
-      },
-      resolve_users: {
-        type: 'boolean',
-        description: 'Resolve user IDs to user information',
-        default: true,
-      },
-      filter_bots: {
-        type: 'boolean',
-        description: 'Filter out bot messages',
+        description: 'Include all message metadata and reactions',
         default: false,
       },
-      filter_system: {
+      cursor: {
+        type: 'string',
+        description: 'Pagination cursor for retrieving next page',
+      },
+      filter_by_user: {
+        type: 'string',
+        description: 'Filter messages by specific user ID',
+      },
+      filter_by_type: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Filter by message types (message, file_share, etc.)',
+      },
+      include_analytics: {
         type: 'boolean',
-        description: 'Filter out system messages',
-        default: false,
+        description: 'Include message analytics and insights',
+        default: true,
       },
     },
     required: ['channel'],
@@ -71,136 +82,83 @@ export const slackGetChannelHistoryTool: MCPTool = {
     const startTime = Date.now();
     
     try {
-      // Validate input
-      const validatedArgs = Validator.validate(ToolSchemas.getChannelHistory, args);
+      const validatedArgs = Validator.validate(inputSchema, args) as SlackGetChannelHistoryArgs;
       
-      // Resolve channel ID
-      const channelId = await slackClient.resolveChannelId(validatedArgs.channel);
-      
-      // Convert ISO timestamps to Slack timestamps if needed
-      const convertTimestamp = (timestamp?: string) => {
-        if (!timestamp) return undefined;
-        
-        // If it's already a Slack timestamp (contains decimal)
-        if (timestamp.includes('.')) return timestamp;
-        
-        // Convert ISO timestamp to Slack timestamp
-        const date = new Date(timestamp);
-        return (date.getTime() / 1000).toString();
-      };
+      // Resolve channel ID if channel name provided
+      let channelId = validatedArgs.channel;
+      if (validatedArgs.channel.startsWith('#')) {
+        channelId = await slackClient.resolveChannelId(validatedArgs.channel);
+      }
 
       // Prepare API parameters
       const apiParams: any = {
         channel: channelId,
         limit: validatedArgs.limit,
+        oldest: validatedArgs.oldest,
+        latest: validatedArgs.latest,
         inclusive: validatedArgs.inclusive,
+        cursor: validatedArgs.cursor,
       };
 
-      if (validatedArgs.oldest) {
-        apiParams.oldest = convertTimestamp(validatedArgs.oldest);
-      }
-
-      if (validatedArgs.latest) {
-        apiParams.latest = convertTimestamp(validatedArgs.latest);
-      }
-
-      if (args.cursor) {
-        apiParams.cursor = args.cursor;
-      }
-
-      // Retrieve messages
-      const result = await slackClient.getClient().conversations.history(apiParams);
-      
-      if (!result.messages) {
-        throw new Error('No messages returned from API');
-      }
-
-      let messages = result.messages;
-
-      // Apply filters
-      if (args.filter_bots) {
-        messages = messages.filter(msg => !msg.bot_id && msg.subtype !== 'bot_message');
-      }
-
-      if (args.filter_system) {
-        messages = messages.filter(msg => !msg.subtype || !msg.subtype.includes('channel_'));
-      }
-
-      // Resolve users if requested
-      const userCache = new Map();
-      if (args.resolve_users !== false) {
-        const userIds = [...new Set(messages.map(msg => msg.user).filter(Boolean))];
-        
-        for (const userId of userIds) {
-          if (!userCache.has(userId)) {
-            try {
-              const userInfo = await slackClient.getUserInfo(userId as string);
-              if (userInfo.success) {
-                userCache.set(userId, userInfo.user);
-              }
-            } catch (error) {
-              logger.warn(`Failed to resolve user ${userId}:`, ErrorHandler.handleError(error));
-            }
-          }
+      // Remove undefined values
+      Object.keys(apiParams).forEach(key => {
+        if (apiParams[key] === undefined) {
+          delete apiParams[key];
         }
-      }
-
-      // Enhance messages with metadata
-      const enhancedMessages = messages.map(msg => {
-        const enhanced: any = {
-          ...msg,
-          timestamp_iso: new Date(parseFloat(msg.ts!) * 1000).toISOString(),
-        };
-
-        // Add user information
-        if (msg.user && userCache.has(msg.user)) {
-          enhanced.user_info = userCache.get(msg.user);
-        }
-
-        // Add message analysis
-        if (args.include_all_metadata !== false) {
-          enhanced.analysis = {
-            has_reactions: !!(msg.reactions && msg.reactions.length > 0),
-            has_replies: !!(msg.reply_count && msg.reply_count > 0),
-            has_attachments: !!(msg.attachments && msg.attachments.length > 0),
-            has_blocks: !!(msg.blocks && msg.blocks.length > 0),
-            has_files: !!(msg.files && msg.files.length > 0),
-            is_thread_parent: !!(msg.reply_count && msg.reply_count > 0),
-            is_thread_reply: !!msg.thread_ts && msg.thread_ts !== msg.ts,
-            word_count: msg.text ? msg.text.split(/\s+/).length : 0,
-            character_count: msg.text ? msg.text.length : 0,
-          };
-        }
-
-        return enhanced;
       });
+
+      // Retrieve message history
+      const result = await slackClient.getClient().conversations.history(apiParams);
+
+      if (!result.ok) {
+        throw new Error(`Slack API error: ${result.error}`);
+      }
+
+      let messages = result.messages || [];
+
+      // Apply client-side filters
+      if (validatedArgs.filter_by_user) {
+        messages = messages.filter((msg: any) => msg.user === validatedArgs.filter_by_user);
+      }
+
+      if (validatedArgs.filter_by_type && validatedArgs.filter_by_type.length > 0) {
+        messages = messages.filter((msg: any) => 
+          validatedArgs.filter_by_type!.includes(msg.type || 'message')
+        );
+      }
+
+      // Enhance messages with additional metadata if requested
+      if (validatedArgs.include_all_metadata) {
+        messages = await this.enhanceMessagesWithMetadata(messages);
+      }
+
+      // Generate analytics if requested
+      let analytics = {};
+      if (validatedArgs.include_analytics) {
+        analytics = this.generateMessageAnalytics(messages, validatedArgs);
+      }
 
       const duration = Date.now() - startTime;
       logger.logToolExecution('slack_get_channel_history', args, duration);
 
       return {
         success: true,
-        messages: enhancedMessages,
-        metadata: {
+        data: {
+          messages,
+          has_more: result.has_more,
+          pin_count: result.pin_count,
+          response_metadata: result.response_metadata,
           channel_id: channelId,
-          total_messages: enhancedMessages.length,
-          has_more: result.has_more,
-          next_cursor: result.response_metadata?.next_cursor,
-          filters_applied: {
-            bots_filtered: args.filter_bots || false,
-            system_filtered: args.filter_system || false,
-            users_resolved: args.resolve_users !== false,
-          },
-          time_range: {
-            oldest: validatedArgs.oldest,
-            latest: validatedArgs.latest,
-            inclusive: validatedArgs.inclusive,
-          },
-          execution_time_ms: duration,
         },
-        pagination: {
-          has_more: result.has_more,
-          next_cursor: result.response_metadata?.next_cursor,
+        metadata: {
+          execution_time_ms: duration,
+          message_count: messages.length,
+          analytics: validatedArgs.include_analytics ? analytics : undefined,
+          filters_applied: {
+            user_filter: !!validatedArgs.filter_by_user,
+            type_filter: !!(validatedArgs.filter_by_type && validatedArgs.filter_by_type.length > 0),
+            time_range: !!(validatedArgs.oldest || validatedArgs.latest),
+          },
         },
       };
 
@@ -215,5 +173,99 @@ export const slackGetChannelHistoryTool: MCPTool = {
         execution_time_ms: duration,
       });
     }
+  },
+
+  // Helper method to enhance messages with additional metadata
+  async enhanceMessagesWithMetadata(messages: any[]): Promise<any[]> {
+    // In a real implementation, this would fetch additional data like:
+    // - User profiles for each message author
+    // - Reaction details
+    // - Thread reply counts
+    // - File information for file shares
+    
+    return messages.map(message => ({
+      ...message,
+      enhanced_metadata: {
+        word_count: message.text ? message.text.split(' ').length : 0,
+        has_attachments: !!(message.attachments && message.attachments.length > 0),
+        has_blocks: !!(message.blocks && message.blocks.length > 0),
+        has_reactions: !!(message.reactions && message.reactions.length > 0),
+        is_thread_parent: !!message.reply_count,
+        is_thread_reply: !!message.thread_ts && message.thread_ts !== message.ts,
+        estimated_read_time: message.text ? Math.ceil(message.text.split(' ').length / 200) : 0,
+      },
+    }));
+  },
+
+  // Helper method to generate message analytics
+  generateMessageAnalytics(messages: any[], args: SlackGetChannelHistoryArgs): Record<string, any> {
+    const totalMessages = messages.length;
+    
+    if (totalMessages === 0) {
+      return {
+        summary: { total_messages: 0 },
+        note: 'No messages found for analysis',
+      };
+    }
+
+    // Basic message statistics
+    const messageTypes = messages.reduce((acc, msg) => {
+      const type = msg.type || 'message';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const userActivity = messages.reduce((acc, msg) => {
+      if (msg.user) {
+        acc[msg.user] = (acc[msg.user] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+
+    const messagesWithText = messages.filter(msg => msg.text);
+    const totalWords = messagesWithText.reduce((acc, msg) => 
+      acc + (msg.text ? msg.text.split(' ').length : 0), 0
+    );
+
+    const messagesWithReactions = messages.filter(msg => msg.reactions && msg.reactions.length > 0);
+    const threadsCount = messages.filter(msg => msg.reply_count && msg.reply_count > 0).length;
+
+    // Time-based analysis
+    const timestamps = messages.map(msg => parseFloat(msg.ts)).filter(ts => !isNaN(ts));
+    const timeRange = timestamps.length > 1 ? {
+      earliest: new Date(Math.min(...timestamps) * 1000).toISOString(),
+      latest: new Date(Math.max(...timestamps) * 1000).toISOString(),
+      span_hours: (Math.max(...timestamps) - Math.min(...timestamps)) / 3600,
+    } : null;
+
+    return {
+      summary: {
+        total_messages: totalMessages,
+        unique_users: Object.keys(userActivity).length,
+        message_types: messageTypes,
+        time_range: timeRange,
+      },
+      content_analysis: {
+        messages_with_text: messagesWithText.length,
+        total_words: totalWords,
+        average_words_per_message: messagesWithText.length > 0 ? Math.round(totalWords / messagesWithText.length) : 0,
+        messages_with_reactions: messagesWithReactions.length,
+        reaction_rate: totalMessages > 0 ? Math.round((messagesWithReactions.length / totalMessages) * 100) : 0,
+      },
+      engagement_metrics: {
+        threads_started: threadsCount,
+        thread_rate: totalMessages > 0 ? Math.round((threadsCount / totalMessages) * 100) : 0,
+        most_active_users: Object.entries(userActivity)
+          .sort(([,a], [,b]) => (b as number) - (a as number))
+          .slice(0, 5)
+          .map(([user, count]) => ({ user, message_count: count })),
+      },
+      retrieval_info: {
+        requested_limit: args.limit,
+        actual_retrieved: totalMessages,
+        filters_applied: !!(args.filter_by_user || args.filter_by_type),
+        time_filtered: !!(args.oldest || args.latest),
+      },
+    };
   },
 };

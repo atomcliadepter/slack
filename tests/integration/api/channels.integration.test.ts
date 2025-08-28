@@ -1,5 +1,5 @@
 
-import { slackGetChannelHistoryTool } from '../../../../src/tools/slackGetChannelHistory';
+import { slackGetChannelHistoryTool } from '../../../src/tools/slackGetChannelHistory';
 import { skipIntegration, mockValidArgs, mockInvalidArgs } from './testUtils';
 
 const describeOrSkip = skipIntegration ? describe.skip : describe;
