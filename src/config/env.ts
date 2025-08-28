@@ -36,15 +36,38 @@ const envSchema = z.object({
 // Validate and parse environment variables
 const parseResult = envSchema.safeParse(process.env);
 
+let config: z.infer<typeof envSchema>;
+
 if (!parseResult.success) {
   console.error('❌ Invalid environment configuration:');
   parseResult.error.issues.forEach((issue) => {
     console.error(`  - ${issue.path.join('.')}: ${issue.message}`);
   });
-  process.exit(1);
+  
+  // Don't exit during tests - provide test defaults
+  if (process.env.NODE_ENV === 'test') {
+    console.warn('⚠️  Using test defaults for missing environment variables');
+    config = {
+      SLACK_BOT_TOKEN: 'xoxb-test-token',
+      SLACK_SIGNING_SECRET: 'test-signing-secret',
+      NODE_ENV: 'test' as const,
+      HTTP_PORT: 3000,
+      SLACK_SOCKET_MODE: false,
+      SLACK_LOG_LEVEL: 'INFO' as const,
+      SLACK_API_TIMEOUT_MS: 30000,
+      SLACK_API_MAX_RETRIES: 3,
+      MCP_SERVER_NAME: 'enhanced-slack-mcp-server',
+      MCP_SERVER_VERSION: '2.0.0',
+      AWS_REGION: 'us-east-1',
+    };
+  } else {
+    process.exit(1);
+  }
+} else {
+  config = parseResult.data;
 }
 
-export const config = parseResult.data;
+export { config };
 
 // Type-safe environment configuration
 export type Config = typeof config;

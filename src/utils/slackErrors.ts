@@ -68,8 +68,8 @@ export class SlackAPIErrorHandler {
     const errorCode = result.error;
     const userMessage = SLACK_ERROR_MESSAGES[errorCode] || `Slack API error: ${errorCode}`;
     
-    // Add additional context from response metadata
-    let fullMessage = userMessage;
+    // Include error code in message for test compatibility
+    let fullMessage = `${userMessage} (${errorCode})`;
     if (result.response_metadata?.messages?.length) {
       fullMessage += ` Additional info: ${result.response_metadata.messages.join(', ')}`;
     }
