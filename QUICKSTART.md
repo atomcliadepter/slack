@@ -135,7 +135,7 @@ slackClient.clearCache();
 
 ### Analytics & Insights
 ```typescript
-const result = await slackGetUserInfoTool.execute({
+const result = await slackUsersInfoTool.execute({
   user: 'john.doe',
   include_analytics: true,
   include_recommendations: true,

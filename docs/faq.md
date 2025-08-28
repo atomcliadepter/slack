@@ -222,7 +222,7 @@ if (result.success) {
 const promises = [
   slackSendMessageTool.execute({ channel: '#general', text: 'Message 1' }),
   slackSendMessageTool.execute({ channel: '#random', text: 'Message 2' }),
-  slackGetUserInfoTool.execute({ userId: 'U1234567890' })
+  slackUsersInfoTool.execute({ userId: 'U1234567890' })
 ];
 
 const results = await Promise.all(promises);

@@ -144,7 +144,7 @@ app.command('/userinfo', async ({ command, ack, respond }) => {
 **After (Enhanced MCP SDK):**
 ```javascript
 const { slackSendMessageTool } = require('./dist/tools/slackSendMessage');
-const { slackGetUserInfoTool } = require('./dist/tools/slackGetUserInfo');
+const { slackUsersInfoTool } = require('./dist/tools/slackUsersInfo');
 
 // Direct tool usage with enhanced features
 async function handleHelloMessage(channel, userId) {
@@ -157,7 +157,7 @@ async function handleHelloMessage(channel, userId) {
 }
 
 async function getUserInfo(userId) {
-  const result = await slackGetUserInfoTool.execute({
+  const result = await slackUsersInfoTool.execute({
     userId: userId
   });
   
