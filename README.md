@@ -93,7 +93,7 @@ A Slack integration SDK built on the Model Context Protocol (MCP) with **10 full
 
 # Enhanced MCP Slack SDK v2.0.0 🎉 **COMPLETE!**
 
-**Status**: ✅ **FULLY COMPLETE** - ALL 33 tools working with comprehensive test coverage  
+**Status**: ✅ **FULLY COMPLETE** - ALL 32 tools working with comprehensive test coverage  
 **Last Updated**: August 27, 2025  
 **🏆 ACHIEVEMENT UNLOCKED: 100% COMPLETE!**
 
@@ -1474,7 +1474,7 @@ enhanced-mcp-slack-sdk/
 │   │   └── globalStubs.ts # Global function stubs
 │   ├── registry/
 │   │   └── toolRegistry.ts # Tool management system
-│   ├── tools/             # Enhanced tool implementations (33 tools)
+│   ├── tools/             # Enhanced tool implementations (32 tools)
 │   │   ├── slackSendMessage.ts
 │   │   ├── slackGetChannelHistory.ts
 │   │   ├── slackCreateChannel.ts

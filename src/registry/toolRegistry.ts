@@ -100,7 +100,7 @@ export const toolRegistry = new ToolRegistry();
 import { slackSendMessageTool } from '@/tools/slackSendMessage';
 import { slackGetChannelHistoryTool } from '@/tools/slackGetChannelHistory';
 import { slackCreateChannelTool } from '@/tools/slackCreateChannel';
-import { slackGetUserInfoTool } from '@/tools/slackGetUserInfo';
+// Removed duplicate slackGetUserInfo - using enhanced slackUsersInfo instead
 import { slackListChannelsTool } from '@/tools/slackListChannels';
 import { slackListUsersTool } from '@/tools/slackListUsers';
 import { slackAuthTestTool } from '@/tools/slackAuthTest';
@@ -143,7 +143,7 @@ import { slackUsersListTool } from '@/tools/slackUsersList';
 toolRegistry.register(slackSendMessageTool);
 toolRegistry.register(slackGetChannelHistoryTool);
 toolRegistry.register(slackCreateChannelTool);
-toolRegistry.register(slackGetUserInfoTool);
+// Removed duplicate registration - using enhanced slackUsersInfo instead
 toolRegistry.register(slackListChannelsTool);
 toolRegistry.register(slackListUsersTool);
 toolRegistry.register(slackAuthTestTool);
