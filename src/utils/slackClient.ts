@@ -11,6 +11,8 @@ class EnhancedSlackClient {
   private client: WebClient;
   private userClient: WebClient | null = null;
   private config: ReturnType<typeof getSlackConfig>;
+  private cache: Map<string, { data: any; timestamp: number }> = new Map();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
     this.config = getSlackConfig();
@@ -55,6 +57,34 @@ class EnhancedSlackClient {
       throw new Error('User token not configured. Set SLACK_USER_TOKEN environment variable.');
     }
     return this.userClient;
+  }
+
+  /**
+   * Get cached data if available and not expired
+   */
+  private getCached(key: string): any | null {
+    const cached = this.cache.get(key);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      return cached.data;
+    }
+    if (cached) {
+      this.cache.delete(key); // Remove expired cache
+    }
+    return null;
+  }
+
+  /**
+   * Set cache data
+   */
+  private setCache(key: string, data: any): void {
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  /**
+   * Clear cache
+   */
+  clearCache(): void {
+    this.cache.clear();
   }
 
   /**
@@ -107,6 +137,53 @@ class EnhancedSlackClient {
   }
 
   /**
+   * Get user information with caching
+   */
+  async getUserInfo(user: string) {
+    let userId = user;
+    
+    // If user doesn't start with U, try to find by username
+    if (!user.startsWith('U')) {
+      const username = user.startsWith('@') ? user.slice(1) : user;
+      const cacheKey = `username_${username}`;
+      const cachedUserId = this.getCached(cacheKey);
+      
+      if (cachedUserId) {
+        userId = cachedUserId;
+      } else {
+        const users = await this.client.users.list({});
+        const foundUser = users.members?.find(
+          (u) => u.name === username || u.real_name === username
+        );
+
+        if (!foundUser) {
+          throw new Error(`User '${user}' not found`);
+        }
+
+        userId = foundUser.id!;
+        this.setCache(cacheKey, userId);
+      }
+    }
+
+    const cacheKey = `user_info_${userId}`;
+    const cached = this.getCached(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const result = await this.client.users.info({ user: userId });
+      if (result.ok) {
+        this.setCache(cacheKey, result);
+        return result;
+      }
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Get channel information by ID or name
    */
   async getChannelInfo(channel: string) {
@@ -149,40 +226,6 @@ class EnhancedSlackClient {
   /**
    * Get user information by ID or username
    */
-  async getUserInfo(user: string) {
-    try {
-      // If user doesn't start with U, try to find by username
-      if (!user.startsWith('U')) {
-        const username = user.startsWith('@') ? user.slice(1) : user;
-        const users = await this.client.users.list({});
-        
-        const foundUser = users.members?.find(
-          (u) => u.name === username || u.real_name === username
-        );
-
-        if (!foundUser) {
-          throw new Error(`User '${user}' not found`);
-        }
-
-        user = foundUser.id!;
-      }
-
-      const result = await this.client.users.info({
-        user,
-      });
-
-      return {
-        success: true,
-        user: result.user,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: ErrorHandler.handleError(error),
-      };
-    }
-  }
-
   /**
    * Resolve channel ID from name or ID
    */

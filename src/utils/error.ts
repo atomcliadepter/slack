@@ -17,12 +17,12 @@ export class SlackError extends Error {
   }
 }
 
-export class ValidationError extends Error {
+export class ValidationError extends SlackError {
   public field: string;
   public value?: any;
 
   constructor(field: string, message: string, value?: any) {
-    super(message);
+    super('validation_error', message);
     this.name = 'ValidationError';
     this.field = field;
     this.value = value;
@@ -30,11 +30,11 @@ export class ValidationError extends Error {
   }
 }
 
-export class RateLimitError extends Error {
+export class RateLimitError extends SlackError {
   public retryAfter: number;
 
   constructor(message: string, retryAfter: number = 60) {
-    super(message);
+    super('rate_limited', message);
     this.name = 'RateLimitError';
     this.retryAfter = retryAfter;
     Error.captureStackTrace(this, RateLimitError);
@@ -47,26 +47,41 @@ export class RateLimitError extends Error {
 export function handleSlackError(response: any, headers?: Record<string, string>): SlackError | RateLimitError {
   if (response.error === 'rate_limited') {
     const retryAfter = headers?.['retry-after'] ? parseInt(headers['retry-after']) : 60;
-    return new RateLimitError(response.error, retryAfter);
+    return new RateLimitError('Rate limit exceeded', retryAfter);
   }
   
-  return new SlackError(response.error || 'unknown_error', response.error || 'An unknown error occurred');
+  // Map common error codes to user-friendly messages
+  const errorMessages: Record<string, string> = {
+    'channel_not_found': 'Channel not found',
+    'user_not_found': 'User not found',
+    'invalid_auth': 'Invalid authentication token',
+    'account_inactive': 'Account is inactive',
+    'token_revoked': 'Token has been revoked',
+    'no_permission': 'Insufficient permissions',
+    'file_not_found': 'File not found',
+    'unknown_error': 'Something went wrong'
+  };
+  
+  const errorCode = response.error || 'unknown_error';
+  const errorMessage = errorMessages[errorCode] || errorCode;
+  
+  return new SlackError(errorCode, errorMessage);
 }
 
 /**
  * Format errors for user display
  */
 export function formatErrorForUser(error: Error): string {
-  if (error instanceof SlackError) {
-    return `Slack API Error: ${error.message} (${error.code})`;
-  }
-  
   if (error instanceof ValidationError) {
-    return `Validation Error: ${error.message} (field: ${error.field})`;
+    return `Validation Error: ${error.message} (Field: ${error.field})`;
   }
   
   if (error instanceof RateLimitError) {
-    return `Rate Limited: ${error.message}. Please retry after ${error.retryAfter} seconds.`;
+    return `Rate Limited: ${error.message}. Please try again in ${error.retryAfter} seconds.`;
+  }
+  
+  if (error instanceof SlackError) {
+    return `Slack API Error: ${error.message} (Error Code: ${error.code})`;
   }
   
   return error.message || 'An unknown error occurred';
@@ -76,27 +91,49 @@ export function formatErrorForUser(error: Error): string {
  * Check if an error is retryable
  */
 export function isRetryableError(error: Error): boolean {
-  if (error instanceof RateLimitError) return true;
+  if (error instanceof RateLimitError) {
+    return true;
+  }
+  
   if (error instanceof SlackError) {
     const retryableCodes = ['internal_error', 'service_unavailable', 'timeout'];
     return retryableCodes.includes(error.code);
   }
+  
+  // Network errors are generally retryable
+  if (error.message.toLowerCase().includes('network')) {
+    return true;
+  }
+  
   return false;
 }
 
 /**
- * Calculate retry delay with exponential backoff
+ * Get retry delay for an error
  */
 export function getRetryDelay(attempt: number, error?: Error): number {
   if (error instanceof RateLimitError) {
     return error.retryAfter * 1000; // Convert to milliseconds
   }
   
-  const baseDelay = 1000; // 1 second
-  const maxDelay = 30000; // 30 seconds
-  const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  // Exponential backoff: 1s, 2s, 4s, 8s, etc.
+  return Math.min(1000 * Math.pow(2, attempt), 30000);
+}
+
+/**
+ * Aggregate multiple errors into a single error
+ */
+export function aggregateErrors(errors: Error[]): Error | null {
+  if (errors.length === 0) {
+    return null;
+  }
   
-  return delay;
+  if (errors.length === 1) {
+    return errors[0];
+  }
+  
+  const message = `Multiple errors occurred: ${errors.map(e => e.message).join('; ')}`;
+  return new SlackError('multiple_errors', message, { errors });
 }
 
 /**
@@ -126,17 +163,6 @@ export function getRecoverySuggestions(errorCode: string | null): string[] {
     'Verify your Slack token',
     'Try again later'
   ];
-}
-
-/**
- * Aggregate multiple errors into a single error
- */
-export function aggregateErrors(errors: Error[]): Error | null {
-  if (errors.length === 0) return null;
-  if (errors.length === 1) return errors[0];
-  
-  const messages = errors.map(e => e.message).join('; ');
-  return new Error(`Multiple errors occurred: ${messages}`);
 }
 
 /**

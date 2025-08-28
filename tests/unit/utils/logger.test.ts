@@ -6,6 +6,7 @@ const originalConsole = {
   error: console.error,
   warn: console.warn,
   info: console.info,
+  debug: console.debug,
 };
 
 describe('Logger utilities', () => {
@@ -14,6 +15,7 @@ describe('Logger utilities', () => {
     error: jest.SpyInstance;
     warn: jest.SpyInstance;
     info: jest.SpyInstance;
+    debug: jest.SpyInstance;
   };
 
   beforeEach(() => {
@@ -23,6 +25,7 @@ describe('Logger utilities', () => {
       error: jest.spyOn(console, 'error').mockImplementation(() => {}),
       warn: jest.spyOn(console, 'warn').mockImplementation(() => {}),
       info: jest.spyOn(console, 'info').mockImplementation(() => {}),
+      debug: jest.spyOn(console, 'debug').mockImplementation(() => {}),
     };
   });
 
@@ -80,7 +83,7 @@ describe('Logger utilities', () => {
       const debugLogger = createLogger('debug', { level: 'DEBUG' });
       debugLogger.debug('Test debug message');
       
-      expect(consoleSpy.log).toHaveBeenCalled();
+      expect(consoleSpy.debug).toHaveBeenCalled();
     });
 
     it('should not log debug messages when level is higher', () => {

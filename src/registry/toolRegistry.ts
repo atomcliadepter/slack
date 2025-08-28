@@ -137,6 +137,7 @@ import { slackConversationsRepliesTool } from '@/tools/slackConversationsReplies
 import { slackConversationsMarkTool } from '@/tools/slackConversationsMark';
 import { slackUsersLookupByEmailTool } from '@/tools/slackUsersLookupByEmail';
 import { slackUsersInfoTool } from '@/tools/slackUsersInfo';
+import { slackConversationsOpenTool } from '@/tools/slackConversationsOpen';
 import { slackUsersListTool } from '@/tools/slackUsersList';
 
 // Register all implemented tools
@@ -173,5 +174,6 @@ toolRegistry.register(slackConversationsMarkTool);
 toolRegistry.register(slackUsersLookupByEmailTool);
 toolRegistry.register(slackUsersInfoTool);
 toolRegistry.register(slackUsersListTool);
+toolRegistry.register(slackConversationsOpenTool);
 
-logger.info(`🎉 COMPLETE! Registered ${toolRegistry.getAllTools().length} tools in registry - ALL 33 TOOLS IMPLEMENTED!`);
+logger.info(`🎉 COMPLETE! Registered ${toolRegistry.getAllTools().length} tools in registry - ALL TOOLS IMPLEMENTED!`);

@@ -101,8 +101,17 @@ export const mockValidArgs = {
   include_health_score: true,
   include_usage_patterns: true,
   include_security_analysis: true,
-  include_performance_metrics: true
+  include_performance_metrics: true,
+  sendMessage: {
+    channel: 'C1234567890',
+    text: 'Test message'
+  }
 };
+
+/**
+ * Delay function for tests
+ */
+export const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Common invalid arguments for testing
@@ -143,7 +152,12 @@ export const mockInvalidArgs = {
   floatInsteadOfInt: 3.14159,
   arrayInsteadOfString: ['not', 'a', 'string'],
   objectInsteadOfString: { not: 'a string' },
-  functionInsteadOfString: () => 'not a string'
+  functionInsteadOfString: () => 'not a string',
+  sendMessage: [
+    { channel: '', text: 'Test message' }, // Empty channel
+    { channel: 'invalid-channel', text: '' }, // Empty text
+    { channel: 'invalid-channel' } // Missing text
+  ]
 };
 
 /**

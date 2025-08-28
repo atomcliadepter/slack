@@ -1,5 +1,15 @@
 // Import global stubs to make functions available
 import '../../src/utils/globalStubs';
+import { 
+  analyzeThread, 
+  getEmojiSentiment, 
+  categorizeEmoji, 
+  assessProfileCompleteness,
+  analyzeSentiment,
+  analyzeActivityIndicators,
+  analyzeQuery,
+  generateUserRecommendations
+} from '../utils/testAnalytics';
 
 describe('Simple Test Suite', () => {
   describe('Basic Functionality', () => {
@@ -15,16 +25,16 @@ describe('Simple Test Suite', () => {
     });
 
     it('should test emoji sentiment analysis', () => {
-      const sentiment = getEmojiSentiment('👍');
-      expect(typeof sentiment).toBe('number');
-      expect(sentiment).toBeGreaterThanOrEqual(0);
-      expect(sentiment).toBeLessThanOrEqual(10);
+      const sentiment = getEmojiSentiment('thumbsup');
+      expect(typeof sentiment).toBe('object');
+      expect(sentiment.score).toBeGreaterThanOrEqual(-1);
+      expect(sentiment.score).toBeLessThanOrEqual(1);
     });
 
     it('should test emoji categorization', () => {
-      const category = categorizeEmoji('👍');
+      const category = categorizeEmoji('thumbsup');
       expect(typeof category).toBe('string');
-      expect(['positive', 'negative', 'neutral']).toContain(category);
+      expect(['reaction', 'emotion', 'celebration', 'object', 'other']).toContain(category);
     });
 
     it('should test profile completeness assessment', () => {
@@ -50,8 +60,8 @@ describe('Simple Test Suite', () => {
       ];
       
       const sentiment = analyzeSentiment(mockReactions);
-      expect(sentiment).toHaveProperty('average_sentiment');
-      expect(typeof sentiment.average_sentiment).toBe('number');
+      expect(sentiment).toHaveProperty('overall_sentiment');
+      expect(typeof sentiment.overall_sentiment).toBe('number');
     });
 
     it('should test user activity analysis', () => {
@@ -72,10 +82,10 @@ describe('Simple Test Suite', () => {
       const query = 'how to deploy application';
       const analysis = analyzeQuery(query);
       
-      expect(analysis).toHaveProperty('word_count');
+      expect(analysis).toHaveProperty('keywords');
       expect(analysis).toHaveProperty('complexity');
-      expect(analysis).toHaveProperty('search_intent');
-      expect(typeof analysis.word_count).toBe('number');
+      expect(analysis).toHaveProperty('intent');
+      expect(typeof analysis.complexity).toBe('string');
     });
 
     it('should test recommendation generation', () => {
@@ -87,8 +97,8 @@ describe('Simple Test Suite', () => {
       const mockUser = { id: 'U123456' };
       const recommendations = generateUserRecommendations(mockAnalytics, mockUser);
       
-      expect(Array.isArray(recommendations)).toBe(true);
-      expect(recommendations.length).toBeGreaterThan(0);
+      expect(typeof recommendations).toBe('object');
+      expect(recommendations.profile_improvements.length).toBeGreaterThan(0);
     });
   });
 
@@ -108,19 +118,19 @@ describe('Simple Test Suite', () => {
 
   describe('Integration Points', () => {
     it('should have consistent return types', () => {
-      const sentiment = getEmojiSentiment('😊');
-      const category = categorizeEmoji('😊');
+      const sentiment = getEmojiSentiment('smile');
+      const category = categorizeEmoji('smile');
       
-      expect(typeof sentiment).toBe('number');
+      expect(typeof sentiment).toBe('object');
       expect(typeof category).toBe('string');
       
       // Sentiment should be consistent with category
-      if (sentiment > 6) {
-        expect(category).toBe('positive');
-      } else if (sentiment < 4) {
-        expect(category).toBe('negative');
+      if (sentiment.score > 0.5) {
+        expect(sentiment.sentiment).toBe('positive');
+      } else if (sentiment.score < -0.5) {
+        expect(sentiment.sentiment).toBe('negative');
       } else {
-        expect(category).toBe('neutral');
+        expect(sentiment.sentiment).toBe('neutral');
       }
     });
 

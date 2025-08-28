@@ -17,7 +17,7 @@ import { slackAuthTestTool } from '../../../src/tools/slackAuthTest';
 import { slackSendMessageTool } from '../../../src/tools/slackSendMessage';
 import { slackListChannelsTool } from '../../../src/tools/slackListChannels';
 import { slackListUsersTool } from '../../../src/tools/slackListUsers';
-import { slackGetUserInfoTool } from '../../../src/tools/slackGetUserInfo';
+import { slackUsersInfoTool as slackGetUserInfoTool } from '../../../src/tools/slackUsersInfo';
 import { slackCreateChannelTool } from '../../../src/tools/slackCreateChannel';
 import { slackGetChannelHistoryTool } from '../../../src/tools/slackGetChannelHistory';
 import { slackUploadFileTool } from '../../../src/tools/slackUploadFile';

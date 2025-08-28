@@ -1,4 +1,4 @@
-import { slackGetUserInfoTool } from '../../../src/tools/slackGetUserInfo';
+import { slackUsersInfoTool as slackGetUserInfoTool } from '../../../src/tools/slackUsersInfo';
 import { slackClient } from '../../../src/utils/slackClient';
 
 jest.mock('../../../src/utils/slackClient');

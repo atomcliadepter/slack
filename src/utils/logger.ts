@@ -53,11 +53,39 @@ class Logger {
     }
 
     if (this.loggerConfig.format === 'json') {
-      return JSON.stringify(baseLog, null, this.config.isDevelopment ? 2 : 0);
+      // Handle circular references
+      const seen = new WeakSet();
+      const replacer = (key: string, value: any) => {
+        if (typeof value === 'object' && value !== null) {
+          if (seen.has(value)) {
+            return '[Circular]';
+          }
+          seen.add(value);
+        }
+        return value;
+      };
+      return JSON.stringify(baseLog, replacer, this.config.isDevelopment ? 2 : 0);
     } else {
       const timestamp = baseLog.timestamp ? `[${baseLog.timestamp}] ` : '';
       const logger = baseLog.logger ? `[${baseLog.logger}] ` : '';
-      return `${timestamp}${logger}${level}: ${message}${meta ? ' ' + JSON.stringify(meta) : ''}`;
+      const metaStr = meta ? (() => {
+        try {
+          const seen = new WeakSet();
+          const replacer = (key: string, value: any) => {
+            if (typeof value === 'object' && value !== null) {
+              if (seen.has(value)) {
+                return '[Circular]';
+              }
+              seen.add(value);
+            }
+            return value;
+          };
+          return ' ' + JSON.stringify(meta, replacer);
+        } catch {
+          return ' [Object with circular reference]';
+        }
+      })() : '';
+      return `${timestamp}${logger}${level}: ${message}${metaStr}`;
     }
   }
 

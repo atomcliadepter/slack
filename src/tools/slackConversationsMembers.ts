@@ -284,18 +284,6 @@ export const slackConversationsMembersTool: MCPTool = {
                 },
               };
 
-              // Add presence information if requested
-              if (validatedArgs.include_presence) {
-                try {
-                  const presenceResult = await client.users.getPresence({ user: userId });
-                  if (presenceResult.ok) {
-                    enhancedMember.presence = presenceResult.presence;
-                  }
-                } catch (error) {
-                  // Presence info is optional, continue without it
-                }
-              }
-
               return enhancedMember;
             }
           } catch (error) {
@@ -305,7 +293,27 @@ export const slackConversationsMembersTool: MCPTool = {
         });
 
         const userResults = await Promise.all(userInfoPromises);
-        enhancedMembers.push(...userResults.filter((user): user is EnhancedMember => user !== null));
+        const validMembers = userResults.filter((user): user is EnhancedMember => user !== null);
+        
+        // Add presence information if requested - batch these calls too
+        if (validatedArgs.include_presence && validMembers.length > 0) {
+          const presencePromises = validMembers.map(async (member) => {
+            try {
+              const presenceResult = await client.users.getPresence({ user: member.id });
+              if (presenceResult.ok) {
+                member.presence = presenceResult.presence;
+              }
+            } catch (error) {
+              // Presence info is optional, continue without it
+            }
+            return member;
+          });
+          
+          const membersWithPresence = await Promise.all(presencePromises);
+          enhancedMembers.push(...membersWithPresence);
+        } else {
+          enhancedMembers.push(...validMembers);
+        }
       }
 
       // Step 4: Apply filtering

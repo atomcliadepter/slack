@@ -59,7 +59,7 @@ describe('aiAnalytics utilities', () => {
 
         expect(result.emotions).toBeDefined();
         expect(result.emotions!.joy).toBeGreaterThan(0);
-        expect(Object.values(result.emotions!).reduce((sum, val) => sum + val, 0)).toBeCloseTo(1, 1);
+        expect((Object.values(result.emotions!) as number[]).reduce((sum: number, val: number) => sum + val, 0)).toBeCloseTo(1, 1);
       });
 
       it('should cache sentiment analysis results', () => {
@@ -307,7 +307,7 @@ describe('aiAnalytics utilities', () => {
         const result = aiAnalytics.AIAnalytics.analyzeTeamDynamics(teamId, members, interactions);
 
         expect(result.communicationFlow.centralFigures.length).toBeGreaterThan(0);
-        expect(result.communicationFlow.centralFigures.every(id => members.includes(id))).toBe(true);
+        expect(result.communicationFlow.centralFigures.every((id: string) => members.includes(id))).toBe(true);
       });
     });
   });
@@ -329,21 +329,21 @@ describe('aiAnalytics utilities', () => {
 
         expect(result.appropriateness).toBeLessThan(0.5);
         expect(result.suggestions.length).toBeGreaterThan(0);
-        expect(result.suggestions.some(s => s.includes('lowercase'))).toBe(true);
+        expect(result.suggestions.some((s: string) => s.includes('lowercase'))).toBe(true);
       });
 
       it('should provide suggestions for improvement', () => {
         const problematicName = 'channel-';
         const result = aiAnalytics.AIAnalytics.analyzeChannelName(problematicName);
 
-        expect(result.suggestions.some(s => s.includes('hyphens'))).toBe(true);
+        expect(result.suggestions.some((s: string) => s.includes('hyphens'))).toBe(true);
       });
 
       it('should handle very long names', () => {
         const longName = 'a'.repeat(30);
         const result = aiAnalytics.AIAnalytics.analyzeChannelName(longName);
 
-        expect(result.suggestions.some(s => s.includes('shortening'))).toBe(true);
+        expect(result.suggestions.some((s: string) => s.includes('shortening'))).toBe(true);
       });
 
       it('should analyze sentiment of channel names', () => {

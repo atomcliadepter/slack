@@ -1,14 +1,11 @@
 
 import { jest } from '@jest/globals';
 import { TestHelpers } from '../../helpers/testUtils';
+import { Validator } from '../../../src/utils/validator';
 
 describe('validator utilities', () => {
-  let validator: any;
-
   beforeEach(async () => {
     jest.clearAllMocks();
-    const module = await import('../../../src/utils/validator');
-    validator = module;
   });
 
   describe('validateChannelId', () => {
@@ -21,7 +18,7 @@ describe('validator utilities', () => {
       ];
 
       validChannelIds.forEach(channelId => {
-        expect(validator.validateChannelId(channelId)).toBe(true);
+        expect(Validator.validateChannelId(channelId)).toBe(true);
       });
     });
 
@@ -37,20 +34,20 @@ describe('validator utilities', () => {
       ];
 
       invalidChannelIds.forEach(channelId => {
-        expect(validator.validateChannelId(channelId)).toBe(false);
+        expect(Validator.validateChannelId(channelId)).toBe(false);
       });
     });
 
     it('should validate channel names with # prefix', () => {
-      expect(validator.validateChannelId('#general')).toBe(true);
-      expect(validator.validateChannelId('#test-channel')).toBe(true);
-      expect(validator.validateChannelId('#invalid channel!')).toBe(false);
+      expect(Validator.validateChannelId('#general')).toBe(true);
+      expect(Validator.validateChannelId('#test-channel')).toBe(true);
+      expect(Validator.validateChannelId('#invalid channel!')).toBe(false);
     });
 
     it('should validate user mentions with @ prefix', () => {
-      expect(validator.validateChannelId('@username')).toBe(true);
-      expect(validator.validateChannelId('@user.name')).toBe(true);
-      expect(validator.validateChannelId('@invalid user!')).toBe(false);
+      expect(Validator.validateChannelId('@username')).toBe(true);
+      expect(Validator.validateChannelId('@user.name')).toBe(true);
+      expect(Validator.validateChannelId('@invalid user!')).toBe(false);
     });
   });
 
@@ -64,7 +61,7 @@ describe('validator utilities', () => {
       ];
 
       validUserIds.forEach(userId => {
-        expect(validator.validateUserId(userId)).toBe(true);
+        expect(Validator.validateUserId(userId)).toBe(true);
       });
     });
 
@@ -80,7 +77,7 @@ describe('validator utilities', () => {
       ];
 
       invalidUserIds.forEach(userId => {
-        expect(validator.validateUserId(userId)).toBe(false);
+        expect(Validator.validateUserId(userId)).toBe(false);
       });
     });
   });
@@ -96,7 +93,7 @@ describe('validator utilities', () => {
       ];
 
       validEmails.forEach(email => {
-        expect(validator.validateEmail(email)).toBe(true);
+        expect(Validator.validateEmail(email)).toBe(true);
       });
     });
 
@@ -114,7 +111,7 @@ describe('validator utilities', () => {
       ];
 
       invalidEmails.forEach(email => {
-        expect(validator.validateEmail(email)).toBe(false);
+        expect(Validator.validateEmail(email)).toBe(false);
       });
     });
   });
@@ -129,7 +126,7 @@ describe('validator utilities', () => {
       ];
 
       validTimestamps.forEach(timestamp => {
-        expect(validator.validateTimestamp(timestamp)).toBe(true);
+        expect(Validator.validateTimestamp(timestamp)).toBe(true);
       });
     });
 
@@ -146,7 +143,7 @@ describe('validator utilities', () => {
       ];
 
       invalidTimestamps.forEach(timestamp => {
-        expect(validator.validateTimestamp(timestamp)).toBe(false);
+        expect(Validator.validateTimestamp(timestamp)).toBe(false);
       });
     });
   });
@@ -163,7 +160,7 @@ describe('validator utilities', () => {
       ];
 
       validNames.forEach(name => {
-        expect(validator.validateChannelName(name)).toBe(true);
+        expect(Validator.validateChannelName(name)).toBe(true);
       });
     });
 
@@ -181,7 +178,7 @@ describe('validator utilities', () => {
       ];
 
       invalidNames.forEach(name => {
-        expect(validator.validateChannelName(name)).toBe(false);
+        expect(Validator.validateChannelName(name)).toBe(false);
       });
     });
   });
@@ -197,7 +194,7 @@ describe('validator utilities', () => {
       ];
 
       validTexts.forEach(text => {
-        expect(validator.validateMessageText(text)).toBe(true);
+        expect(Validator.validateMessageText(text)).toBe(true);
       });
     });
 
@@ -211,7 +208,7 @@ describe('validator utilities', () => {
       ];
 
       invalidTexts.forEach(text => {
-        expect(validator.validateMessageText(text)).toBe(false);
+        expect(Validator.validateMessageText(text)).toBe(false);
       });
     });
   });
@@ -228,7 +225,7 @@ describe('validator utilities', () => {
       ];
 
       validJSON.forEach(json => {
-        expect(validator.validateJSON(json)).toBe(true);
+        expect(Validator.validateJSON(json)).toBe(true);
       });
     });
 
@@ -246,7 +243,7 @@ describe('validator utilities', () => {
       ];
 
       invalidJSON.forEach(json => {
-        expect(validator.validateJSON(json)).toBe(false);
+        expect(Validator.validateJSON(json)).toBe(false);
       });
     });
   });
@@ -262,7 +259,7 @@ describe('validator utilities', () => {
       ];
 
       validUrls.forEach(url => {
-        expect(validator.validateUrl(url)).toBe(true);
+        expect(Validator.validateUrl(url)).toBe(true);
       });
     });
 
@@ -278,7 +275,7 @@ describe('validator utilities', () => {
       ];
 
       invalidUrls.forEach(url => {
-        expect(validator.validateUrl(url)).toBe(false);
+        expect(Validator.validateUrl(url)).toBe(false);
       });
     });
   });
@@ -295,7 +292,7 @@ describe('validator utilities', () => {
       ];
 
       validTypes.forEach(type => {
-        expect(validator.validateFileType(type)).toBe(true);
+        expect(Validator.validateFileType(type)).toBe(true);
       });
     });
 
@@ -310,7 +307,7 @@ describe('validator utilities', () => {
       ];
 
       invalidTypes.forEach(type => {
-        expect(validator.validateFileType(type)).toBe(false);
+        expect(Validator.validateFileType(type)).toBe(false);
       });
     });
   });
@@ -324,7 +321,7 @@ describe('validator utilities', () => {
       ];
 
       validSizes.forEach(size => {
-        expect(validator.validateFileSize(size)).toBe(true);
+        expect(Validator.validateFileSize(size)).toBe(true);
       });
     });
 
@@ -338,7 +335,7 @@ describe('validator utilities', () => {
       ];
 
       invalidSizes.forEach(size => {
-        expect(validator.validateFileSize(size)).toBe(false);
+        expect(Validator.validateFileSize(size)).toBe(false);
       });
     });
   });
@@ -353,13 +350,13 @@ describe('validator utilities', () => {
       ];
 
       testCases.forEach(({ input, expected }) => {
-        expect(validator.sanitizeInput(input)).toBe(expected);
+        expect(Validator.sanitizeInput(input)).toBe(expected);
       });
     });
 
     it('should handle null and undefined input', () => {
-      expect(validator.sanitizeInput(null)).toBe('');
-      expect(validator.sanitizeInput(undefined)).toBe('');
+      expect(Validator.sanitizeInput(null)).toBe('');
+      expect(Validator.sanitizeInput(undefined)).toBe('');
     });
   });
 
@@ -391,7 +388,7 @@ describe('validator utilities', () => {
         }
       ];
 
-      expect(validator.validateBlockKit(validBlocks)).toBe(true);
+      expect(Validator.validateBlockKit(validBlocks).isValid).toBe(true);
     });
 
     it('should reject invalid Block Kit JSON', () => {
@@ -405,7 +402,7 @@ describe('validator utilities', () => {
       ];
 
       invalidBlocks.forEach(blocks => {
-        expect(validator.validateBlockKit(blocks)).toBe(false);
+        expect(Validator.validateBlockKit(blocks).isValid).toBe(false);
       });
     });
   });
@@ -426,7 +423,7 @@ describe('validator utilities', () => {
         }
       ];
 
-      expect(validator.validateAttachments(validAttachments)).toBe(true);
+      expect(Validator.validateAttachments(validAttachments)).toBe(true);
     });
 
     it('should reject invalid attachment format', () => {
@@ -439,7 +436,7 @@ describe('validator utilities', () => {
       ];
 
       invalidAttachments.forEach(attachments => {
-        expect(validator.validateAttachments(attachments)).toBe(false);
+        expect(Validator.validateAttachments(attachments)).toBe(false);
       });
     });
   });
@@ -466,7 +463,7 @@ describe('validator utilities', () => {
         ]
       };
 
-      const result = validator.validateMessagePayload(validPayload);
+      const result = Validator.validateMessagePayload(validPayload);
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
@@ -479,7 +476,7 @@ describe('validator utilities', () => {
         attachments: { invalid: 'format' } // Should be array
       };
 
-      const result = validator.validateMessagePayload(invalidPayload);
+      const result = Validator.validateMessagePayload(invalidPayload);
       expect(result.isValid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);
     });
@@ -490,22 +487,22 @@ describe('validator utilities', () => {
       const longString = 'a'.repeat(100000);
       
       // Should not throw errors, just return false for invalid lengths
-      expect(() => validator.validateMessageText(longString)).not.toThrow();
-      expect(() => validator.validateChannelName(longString)).not.toThrow();
+      expect(() => Validator.validateMessageText(longString)).not.toThrow();
+      expect(() => Validator.validateChannelName(longString)).not.toThrow();
     });
 
     it('should handle special characters in validation', () => {
       const specialChars = '!@#$%^&*()[]{}|;:,.<>?';
       
-      expect(validator.validateChannelName(specialChars)).toBe(false);
-      expect(validator.validateMessageText(specialChars)).toBe(true);
+      expect(Validator.validateChannelName(specialChars)).toBe(false);
+      expect(Validator.validateMessageText(specialChars)).toBe(true);
     });
 
     it('should handle unicode characters', () => {
       const unicodeText = 'Hello 世界 🌍 emoji';
       
-      expect(validator.validateMessageText(unicodeText)).toBe(true);
-      expect(validator.validateChannelName('test-世界')).toBe(false); // Unicode not allowed in channel names
+      expect(Validator.validateMessageText(unicodeText)).toBe(true);
+      expect(Validator.validateChannelName('test-世界')).toBe(false); // Unicode not allowed in channel names
     });
   });
 });

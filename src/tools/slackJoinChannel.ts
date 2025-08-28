@@ -8,6 +8,7 @@ import { slackClient } from '@/utils/slackClient';
 import { Validator } from '@/utils/validator';
 import { ErrorHandler } from '@/utils/error';
 import { logger } from '@/utils/logger';
+import { exponentialBackoff } from '@/utils/performance';
 import { z } from 'zod';
 
 /**
@@ -317,9 +318,9 @@ export const slackJoinChannelTool: MCPTool = {
               throw new Error(`Failed to join channel after ${attempts} attempts: ${errorMsg}`);
             }
             
-            // Wait before retry
+            // Wait before retry with exponential backoff
             if (attempts < maxAttempts) {
-              await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+              await exponentialBackoff(attempts);
             }
           }
         } catch (error) {

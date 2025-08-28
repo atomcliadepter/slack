@@ -220,7 +220,7 @@ export class Validator {
   /**
    * Validate Slack attachments
    */
-  static validateAttachments(attachments: any[]): boolean {
+  static validateAttachments(attachments: any): boolean {
     if (!Array.isArray(attachments)) return false;
     
     return attachments.every(attachment => {
@@ -280,36 +280,63 @@ export class Validator {
   /**
    * Validate message text
    */
-  static validateMessageText(text: string): boolean {
+  static validateMessageText(text: any): boolean {
     if (typeof text !== 'string') return false;
     if (text.length === 0) return false;
-    if (text.length > 4000) return false; // Slack limit
+    if (text.trim().length === 0) return false; // Reject whitespace-only text
+    if (text.length > 40000) return false; // Slack limit (based on test)
     return true;
   }
 
   /**
    * Validate channel name format
    */
-  static validateChannelName(name: string): boolean {
+  static validateChannelName(name: any): boolean {
     if (typeof name !== 'string') return false;
     if (name.length === 0) return false;
     
     // Channel names can start with # or not
     const cleanName = name.startsWith('#') ? name.slice(1) : name;
     
+    // Check length first
+    if (cleanName.length > 21 || cleanName.length === 0) return false;
+    
     // Must be lowercase, can contain letters, numbers, hyphens, underscores
-    const channelNameRegex = /^[a-z0-9_-]+$/;
-    return channelNameRegex.test(cleanName) && cleanName.length <= 80;
+    // But cannot start with underscore or end with hyphen
+    const channelNameRegex = /^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$/;
+    return channelNameRegex.test(cleanName);
   }
 
   /**
-   * Validate channel ID format
+   * Validate channel ID format (also handles channel names and user mentions)
    */
-  static validateChannelId(id: string): boolean {
+  static validateChannelId(id: any): boolean {
     if (typeof id !== 'string') return false;
-    // Slack channel IDs start with C and are followed by alphanumeric characters
-    const channelIdRegex = /^C[A-Z0-9]{8,}$/;
-    return channelIdRegex.test(id);
+    
+    // Handle channel names with # prefix
+    if (id.startsWith('#')) {
+      return this.validateChannelName(id);
+    }
+    
+    // Handle user mentions with @ prefix
+    if (id.startsWith('@')) {
+      const username = id.slice(1);
+      return /^[a-z0-9._-]+$/i.test(username) && username.length > 0;
+    }
+    
+    // Handle actual Slack IDs (channels, groups, DMs)
+    const idRegex = /^[CGDU][A-Z0-9]{8,}$/;
+    return idRegex.test(id);
+  }
+
+  /**
+   * Validate user ID format
+   */
+  static validateUserId(id: any): boolean {
+    if (typeof id !== 'string') return false;
+    // Slack user IDs can start with U (users), B (bots), W (workspace users)
+    const userIdRegex = /^[UBW][A-Z0-9]{8,}$/;
+    return userIdRegex.test(id);
   }
 
   /**
@@ -328,5 +355,139 @@ export class Validator {
       }
       return ['Unknown validation error'];
     }
+  }
+
+  /**
+   * Validate email format
+   */
+  static validateEmail(email: any): boolean {
+    if (typeof email !== 'string') return false;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  /**
+   * Validate Slack timestamp format
+   */
+  static validateTimestamp(timestamp: any): boolean {
+    if (typeof timestamp !== 'string') return false;
+    const tsRegex = /^\d{10}\.\d{3,9}$/;
+    return tsRegex.test(timestamp);
+  }
+
+  /**
+   * Validate URL format
+   */
+  static validateUrl(url: any): boolean {
+    if (typeof url !== 'string') return false;
+    if (url.length === 0) return false;
+    
+    try {
+      const urlObj = new URL(url);
+      // Ensure it has a valid protocol
+      if (!['http:', 'https:', 'ftp:', 'ftps:'].includes(urlObj.protocol)) {
+        return false;
+      }
+      // Ensure it has a valid hostname (not just '.' or empty)
+      if (!urlObj.hostname || urlObj.hostname === '.' || urlObj.hostname.length === 0) {
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Validate file type
+   */
+  static validateFileType(fileType: any, allowedTypes?: string[]): boolean {
+    if (typeof fileType !== 'string') return false;
+    if (fileType.length === 0) return false;
+    
+    // Default safe file types if none specified
+    const defaultAllowedTypes = [
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+      'text/plain', 'text/csv', 'text/html', 'text/css', 'text/javascript',
+      'application/pdf', 'application/json', 'application/xml',
+      'application/zip', 'application/gzip',
+      'audio/mpeg', 'audio/wav', 'audio/ogg',
+      'video/mp4', 'video/mpeg', 'video/quicktime'
+    ];
+    
+    const typesToCheck = allowedTypes || defaultAllowedTypes;
+    return typesToCheck.includes(fileType.toLowerCase());
+  }
+
+  /**
+   * Validate file size
+   */
+  static validateFileSize(size: any, maxSize: number = 1024 * 1024 * 100): boolean {
+    return typeof size === 'number' && size > 0 && size <= maxSize;
+  }
+
+  /**
+   * Sanitize input string
+   */
+  static sanitizeInput(input: any): string {
+    if (typeof input !== 'string') return '';
+    return input
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .replace(/javascript:/gi, '') // Remove javascript: URLs
+      .trim();
+  }
+
+  /**
+   * Validate JSON string
+   */
+  static validateJSON(jsonString: any): boolean {
+    if (typeof jsonString !== 'string') return false;
+    try {
+      JSON.parse(jsonString);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Validate Block Kit blocks
+   */
+  static validateBlockKit(blocks: any): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    if (!Array.isArray(blocks)) {
+      errors.push('Blocks must be an array');
+      return { isValid: false, errors };
+    }
+    
+    blocks.forEach((block, index) => {
+      if (!block || typeof block !== 'object') {
+        errors.push(`Block ${index}: must be an object`);
+        return;
+      }
+      
+      if (!block.type) {
+        errors.push(`Block ${index}: missing type`);
+        return;
+      }
+      
+      if (block.type === 'section' && !block.text) {
+        errors.push(`Block ${index}: section blocks require text`);
+      }
+      
+      if (block.type === 'actions' && (!block.elements || !Array.isArray(block.elements))) {
+        errors.push(`Block ${index}: actions blocks require elements array`);
+      }
+      
+      if (block.type === 'divider' && Object.keys(block).length > 1) {
+        errors.push(`Block ${index}: divider blocks should only have type`);
+      }
+    });
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
   }
 }

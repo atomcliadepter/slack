@@ -142,7 +142,7 @@ describe('performance utilities', () => {
       it('should filter metrics by operation', () => {
         const metrics = performance.PerformanceMonitor.getMetrics('operation_a');
         expect(metrics.length).toBe(2);
-        expect(metrics.every(m => m.operation === 'operation_a')).toBe(true);
+        expect(metrics.every((m: any) => m.operation === 'operation_a')).toBe(true);
       });
 
       it('should filter metrics by time range', () => {
@@ -285,14 +285,14 @@ describe('performance utilities', () => {
       it('should detect slow operations', () => {
         const anomalies = performance.PerformanceMonitor.detectAnomalies('normal');
         
-        const slowAnomalies = anomalies.filter(a => a.reason.includes('Slow operation'));
+        const slowAnomalies = anomalies.filter((a: any) => a.reason.includes('Slow operation'));
         expect(slowAnomalies.length).toBeGreaterThan(0);
       });
 
       it('should detect high memory usage', () => {
         const anomalies = performance.PerformanceMonitor.detectAnomalies('normal');
         
-        const memoryAnomalies = anomalies.filter(a => a.reason.includes('High memory usage'));
+        const memoryAnomalies = anomalies.filter((a: any) => a.reason.includes('High memory usage'));
         expect(memoryAnomalies.length).toBeGreaterThan(0);
       });
     });
@@ -312,7 +312,7 @@ describe('performance utilities', () => {
 
         const recommendations = performance.PerformanceMonitor.getOptimizationRecommendations('slow');
         
-        expect(recommendations.some(r => r.includes('caching'))).toBe(true);
+        expect(recommendations.some((r: any) => r.includes('caching'))).toBe(true);
       });
 
       it('should recommend error handling for high error rates', () => {
@@ -329,7 +329,7 @@ describe('performance utilities', () => {
 
         const recommendations = performance.PerformanceMonitor.getOptimizationRecommendations('error_prone');
         
-        expect(recommendations.some(r => r.includes('error handling'))).toBe(true);
+        expect(recommendations.some((r: any) => r.includes('error handling'))).toBe(true);
       });
 
       it('should provide positive feedback for good performance', () => {
@@ -346,7 +346,7 @@ describe('performance utilities', () => {
 
         const recommendations = performance.PerformanceMonitor.getOptimizationRecommendations('good');
         
-        expect(recommendations.some(r => r.includes('looks good'))).toBe(true);
+        expect(recommendations.some((r: any) => r.includes('looks good'))).toBe(true);
       });
     });
   });
@@ -458,8 +458,8 @@ describe('performance utilities', () => {
       
       const metrics = performance.PerformanceMonitor.getMetrics();
       expect(metrics.length).toBe(2);
-      expect(metrics.some(m => m.operation === 'concurrent_1')).toBe(true);
-      expect(metrics.some(m => m.operation === 'concurrent_2')).toBe(true);
+      expect(metrics.some((m: any) => m.operation === 'concurrent_1')).toBe(true);
+      expect(metrics.some((m: any) => m.operation === 'concurrent_2')).toBe(true);
     });
   });
 });

@@ -98,7 +98,7 @@ describe('Tool Registry', () => {
     test('should have default tools registered after import', () => {
       // Re-import to get default tools
       jest.resetModules();
-      const { toolRegistry: freshRegistry } = require('../../src/registry/toolRegistry');
+      const { toolRegistry: freshRegistry } = require('../../../src/registry/toolRegistry');
       
       const stats = freshRegistry.getStats();
       expect(stats.totalTools).toBeGreaterThan(0);
@@ -108,11 +108,11 @@ describe('Tool Registry', () => {
         'slack_send_message',
         'slack_get_channel_history',
         'slack_create_channel',
-        'slack_get_user_info',
+        'slack_users_info',
         'slack_upload_file',
         'slack_search_messages',
         'slack_set_status',
-        'slack_get_workspace_info',
+        'slack_workspace_info',
       ];
       
       expectedTools.forEach(toolName => {

@@ -93,8 +93,8 @@ A Slack integration SDK built on the Model Context Protocol (MCP) with **10 full
 
 # Enhanced MCP Slack SDK v2.0.0 🎉 **COMPLETE!**
 
-**Status**: ✅ **FULLY COMPLETE** - ALL 32 tools working with comprehensive test coverage  
-**Last Updated**: August 27, 2025  
+**Status**: ✅ **FULLY COMPLETE** - ALL 33 tools working with comprehensive test coverage  
+**Last Updated**: August 28, 2025  
 **🏆 ACHIEVEMENT UNLOCKED: 100% COMPLETE!**
 
 A Slack integration SDK built on the Model Context Protocol (MCP) with **ALL 33 FULLY FUNCTIONAL TOOLS** - the most comprehensive Slack MCP integration available!
@@ -472,7 +472,18 @@ A Slack integration SDK built on the Model Context Protocol (MCP) with **ALL 33 
 - ✅ **Smart Recommendations**: Context-aware suggestions for read management optimization
 - ✅ **Comprehensive Testing**: 80+ unit tests covering all read status scenarios
 
-#### **31. slack_users_lookup_by_email** - Advanced Email-Based User Lookup
+#### **31. slack_conversations_open** - Direct Message and Group Chat Creation
+- ✅ **DM Creation**: Open direct message conversations with individual users
+- ✅ **Group DM Support**: Create multi-party direct message conversations
+- ✅ **User Resolution**: Support for multiple user IDs in comma-separated format
+- ✅ **Conversation Analytics**: Analyze conversation type, participant count, and creation status
+- ✅ **Return Options**: Flexible return options for IM channels
+- ✅ **Smart Detection**: Automatic detection of conversation type (DM vs Group DM)
+- ✅ **Performance Tracking**: Execution time monitoring and optimization
+- ✅ **Error Handling**: Comprehensive error handling for invalid users and API failures
+- ✅ **Comprehensive Testing**: 6 unit tests covering all conversation opening scenarios
+
+#### **32. slack_users_lookup_by_email** - Advanced Email-Based User Lookup
 - ✅ **Email Verification**: Comprehensive email format validation and domain analysis
 - ✅ **User Intelligence**: Account status, type, and permissions level detection
 - ✅ **Profile Analysis**: Profile completeness scoring and field assessment
@@ -484,7 +495,7 @@ A Slack integration SDK built on the Model Context Protocol (MCP) with **ALL 33 
 - ✅ **Smart Recommendations**: Context-aware suggestions for user management and security
 - ✅ **Comprehensive Testing**: 90+ unit tests covering all lookup scenarios
 
-#### **32. slack_users_info** - Comprehensive User Profile Analysis
+#### **33. slack_users_info** - Comprehensive User Profile Analysis
 - ✅ **User Resolution**: Support for user IDs and usernames (@username) with automatic resolution
 - ✅ **Presence Information**: Real-time presence and activity status integration
 - ✅ **Profile Analysis**: Completeness assessment, field analysis, and recommendations
@@ -523,7 +534,7 @@ A Slack integration SDK built on the Model Context Protocol (MCP) with **ALL 33 
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/your-org/enhanced-mcp-slack-sdk.git
 cd enhanced-mcp-slack-sdk
 
 # Install dependencies
@@ -557,6 +568,46 @@ docker-compose -f docker/docker-compose.yml up -d
 
 # Check health
 curl http://localhost:3000/health
+```
+
+## ⚡ Performance Optimizations
+
+### Built-in Performance Features
+
+- **API Call Caching**: 5-minute TTL cache for user info and channel data
+- **Parallel Processing**: Batch API calls using `Promise.all` for better throughput
+- **Exponential Backoff**: Smart retry delays that reduce server load
+- **Concurrency Control**: Configurable batch processing to prevent rate limit hits
+- **Performance Monitoring**: Built-in execution time tracking and metrics
+
+### Performance Utilities
+
+```typescript
+import { PerformanceTimer, batchProcess, exponentialBackoff } from '@/utils/performance';
+
+// Track execution time
+const timer = new PerformanceTimer();
+timer.mark('api_call');
+// ... do work
+const duration = timer.measure('api_call');
+
+// Process items in batches
+const results = await batchProcess(items, processor, 5); // 5 concurrent
+
+// Smart retry delays
+await exponentialBackoff(attemptNumber);
+```
+
+### Cache Management
+
+```typescript
+import { slackClient } from '@/utils/slackClient';
+
+// Clear cache when needed
+slackClient.clearCache();
+
+// Cached user lookups (5-minute TTL)
+const user = await slackClient.getUserInfo('U1234567890');
 ```
 
 ## 🔧 Configuration
@@ -1636,6 +1687,57 @@ spec:
           periodSeconds: 30
 ```
 
+## 🛡️ Error Handling & Reliability
+
+### Enhanced Error Handling Features
+
+- **Intelligent Slack API Error Mapping**: User-friendly error messages for all Slack API errors
+- **Input Validation**: Comprehensive validation with specific error messages
+- **Circuit Breaker Pattern**: Automatic failure detection and recovery
+- **Retry Logic**: Smart exponential backoff for transient failures
+- **Error Recovery**: Graceful degradation with fallback values
+
+### Error Handling Utilities
+
+```typescript
+import { SlackAPIErrorHandler } from '@/utils/slackErrors';
+import { InputValidator } from '@/utils/validation';
+import { ErrorRecovery } from '@/utils/errorRecovery';
+
+// Handle Slack API errors with user-friendly messages
+const errorResponse = SlackAPIErrorHandler.createErrorResponse(slackResult);
+
+// Validate inputs before API calls
+InputValidator.validateUserId('U1234567890');
+InputValidator.validateChannelId('C1234567890');
+InputValidator.validateEmail('user@example.com');
+
+// Execute with retry and circuit breaker
+const result = await ErrorRecovery.executeWithRetry(
+  () => slackClient.someMethod(),
+  { maxAttempts: 3, retryableErrors: ['rate_limited'] }
+);
+
+// Graceful fallback
+const data = await ErrorRecovery.withFallback(
+  () => fetchUserData(),
+  { name: 'Unknown User' }
+);
+```
+
+### Circuit Breaker Monitoring
+
+```typescript
+import { ErrorRecovery } from '@/utils/errorRecovery';
+
+// Check circuit breaker status
+const status = ErrorRecovery.getCircuitBreakerStatus('slack-api');
+console.log(status.state); // CLOSED, OPEN, or HALF_OPEN
+
+// Reset circuit breaker if needed
+ErrorRecovery.resetCircuitBreaker('slack-api');
+```
+
 ## 🔧 Development
 
 ### Adding New Tools
@@ -1809,9 +1911,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🆘 Support
 
 ### Documentation
-- [API Documentation](docs/api.md)
-- [Tool Reference](docs/tools.md)
-- [Deployment Guide](docs/deployment.md)
+- [Quick Start Guide](QUICKSTART.md) - 5-minute setup
+- [API Reference](API_REFERENCE.md) - Complete tool documentation
+- [API Documentation](docs/api.md) - Detailed usage guide
+- [Tool Reference](docs/tools.md) - Tool-specific documentation
+- [Deployment Guide](docs/deployment.md) - Production deployment
+- [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
+- [Contributing Guide](CONTRIBUTING.md) - How to contribute
 
 ### Community
 - [GitHub Issues](https://github.com/your-org/enhanced-mcp-slack-sdk/issues)
