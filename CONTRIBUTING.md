@@ -11,6 +11,32 @@ npm run build
 npm test
 ```
 
+### Docker Development
+```bash
+# Build development image
+docker build -f deployment/docker/Dockerfile -t slack-mcp-dev .
+
+# Run with Docker Compose
+cd deployment/docker
+docker-compose up -d
+
+# Test deployment
+curl http://localhost:3000/health
+```
+
+### Testing Deployments
+```bash
+# Test Kubernetes manifests
+kubectl apply --dry-run=client -f deployment/k8s/
+
+# Validate Helm chart
+helm template deployment/helm/ | kubectl apply --dry-run=client -f -
+
+# Test monitoring setup
+cd deployment/monitoring
+docker-compose up -d
+```
+
 ### Adding New Tools
 
 1. **Create Tool File**: `src/tools/slackNewTool.ts`

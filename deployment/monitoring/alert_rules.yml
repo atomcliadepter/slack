@@ -1,0 +1,65 @@
+groups:
+  - name: slack-mcp-alerts
+    rules:
+      - alert: SlackMCPDown
+        expr: up{job="slack-mcp"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Slack MCP service is down"
+          description: "Slack MCP service has been down for more than 1 minute"
+
+      - alert: SlackMCPHighErrorRate
+        expr: rate(http_requests_total{job="slack-mcp",status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate in Slack MCP"
+          description: "Error rate is {{ $value }} errors per second"
+
+      - alert: SlackMCPHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="slack-mcp"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency in Slack MCP"
+          description: "95th percentile latency is {{ $value }} seconds"
+
+      - alert: SlackMCPHighMemoryUsage
+        expr: process_resident_memory_bytes{job="slack-mcp"} / 1024 / 1024 > 400
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage in Slack MCP"
+          description: "Memory usage is {{ $value }}MB"
+
+      - alert: SlackMCPHighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="slack-mcp"}[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage in Slack MCP"
+          description: "CPU usage is {{ $value }}%"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute"
+
+      - alert: SlackAPIRateLimit
+        expr: increase(slack_api_rate_limited_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slack API rate limiting detected"
+          description: "{{ $value }} rate limit events in the last 5 minutes"

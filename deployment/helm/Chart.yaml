@@ -1,0 +1,22 @@
+apiVersion: v2
+name: slack-mcp
+description: Enhanced MCP Slack SDK Helm Chart
+type: application
+version: 2.0.1
+appVersion: "2.0.1"
+keywords:
+  - slack
+  - mcp
+  - api
+  - integration
+home: https://github.com/your-org/enhanced-mcp-slack-sdk
+sources:
+  - https://github.com/your-org/enhanced-mcp-slack-sdk
+maintainers:
+  - name: Your Team
+    email: team@yourorg.com
+dependencies:
+  - name: redis
+    version: "17.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled

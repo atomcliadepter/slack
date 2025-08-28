@@ -104,7 +104,50 @@ const result = await slackCreateChannelTool.execute({
 });
 ```
 
-## 6. Advanced Features
+## 6. Production Deployment
+
+### Docker (Recommended)
+```bash
+# Using Docker Compose
+cd deployment/docker
+docker-compose up -d
+
+# Check status
+docker-compose ps
+curl http://localhost:3000/health
+```
+
+### Kubernetes
+```bash
+# Apply manifests
+kubectl apply -f deployment/k8s/deployment.yaml
+
+# Check deployment
+kubectl get pods -l app=slack-mcp
+kubectl get svc slack-mcp-service
+```
+
+### Helm
+```bash
+# Install with Helm
+helm install slack-mcp deployment/helm/
+
+# Upgrade
+helm upgrade slack-mcp deployment/helm/
+```
+
+### Monitoring
+```bash
+# Deploy monitoring stack
+cd deployment/monitoring
+docker-compose up -d
+
+# Access dashboards
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin)
+```
+
+## 7. Advanced Features
 
 ### Error Handling
 ```typescript

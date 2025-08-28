@@ -15,7 +15,9 @@ export interface ReadActivityAnalysis {
 }
 
 export interface SentimentAnalysis {
+  label: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
   score: number;
+  magnitude: number;
   confidence: number;
   emotions?: {
     joy: number;
@@ -29,7 +31,8 @@ export interface SentimentAnalysis {
 export interface EngagementPrediction {
   score: number;
   factors: string[];
-  recommendations: string[];
+  recommendation: string;
+  confidence: number;
 }
 
 export interface ContentAnalysis {
@@ -85,10 +88,22 @@ export class AIAnalytics {
     const negativeCount = words.filter(word => negativeWords.includes(word)).length;
     
     const score = positiveCount > negativeCount ? 0.7 : negativeCount > positiveCount ? -0.7 : 0;
+    const magnitude = Math.abs(score);
     const confidence = Math.min((positiveCount + negativeCount) / words.length * 2, 1);
 
+    let label: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+    if (score > 0.1) {
+      label = 'POSITIVE';
+    } else if (score < -0.1) {
+      label = 'NEGATIVE';
+    } else {
+      label = 'NEUTRAL';
+    }
+
     const result: SentimentAnalysis = {
+      label,
       score,
+      magnitude,
       confidence,
       emotions: {
         joy: positiveCount > 0 ? 0.6 : 0.1,
@@ -111,35 +126,61 @@ export class AIAnalytics {
 
     const hasQuestion = content.includes('?');
     const hasEmoji = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]/u.test(content);
-    const isShort = content.length < 100;
-    const isVeryLong = content.length > 500;
+    const isOptimalLength = content.length >= 50 && content.length <= 200;
+    const isTooLong = content.length > 500;
+    
+    // Analyze sentiment
+    const sentiment = this.analyzeSentiment(content);
+    const isPositive = sentiment.label === 'POSITIVE';
 
     let score = 0.5;
     const factors: string[] = [];
     const recommendations: string[] = [];
 
+    if (isPositive) {
+      score += 0.2;
+      factors.push('positive_sentiment');
+    }
     if (hasQuestion) {
       score += 0.2;
-      factors.push('Contains question');
+      factors.push('contains_question');
     }
     if (hasEmoji) {
       score += 0.1;
-      factors.push('Contains emoji');
+      factors.push('appropriate_emoji_usage');
     }
-    if (isShort) {
+    if (isOptimalLength) {
       score += 0.1;
-      factors.push('Concise length');
+      factors.push('optimal_length');
     }
-    if (isVeryLong) {
+    if (isTooLong) {
       score -= 0.2;
-      factors.push('Very long content');
+      factors.push('too_long');
       recommendations.push('Consider breaking into shorter messages');
+    }
+
+    // Context-based factors
+    if (context) {
+      const hour = context.timeOfDay || new Date().getHours();
+      const dayOfWeek = context.dayOfWeek || new Date().getDay();
+      const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+      const isPeakHours = (hour >= 9 && hour <= 11) || (hour >= 14 && hour <= 16);
+
+      if (isPeakHours) {
+        score += 0.1;
+        factors.push('peak_hours');
+      }
+      if (isWeekday) {
+        score += 0.05;
+        factors.push('weekday_posting');
+      }
     }
 
     const result: EngagementPrediction = {
       score: Math.min(Math.max(score, 0), 1),
       factors,
-      recommendations
+      recommendation: recommendations.length > 0 ? recommendations.join('. ') : 'Content looks good for engagement',
+      confidence: 0.7
     };
 
     this.cache.set(cacheKey, result);

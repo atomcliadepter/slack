@@ -1,6 +1,6 @@
 {
   "name": "enhanced-mcp-slack-sdk",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Enhanced MCP Slack SDK v2.0.0 - Production-ready Slack integration with comprehensive toolset",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

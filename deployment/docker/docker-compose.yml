@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  slack-mcp:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - HTTP_PORT=3000
+      - REDIS_URL=redis://redis:6379
+    env_file:
+      - ../../.env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "dist/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - slack-mcp-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - slack-mcp-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - slack-mcp
+    restart: unless-stopped
+    networks:
+      - slack-mcp-network
+
+volumes:
+  redis_data:
+
+networks:
+  slack-mcp-network:
+    driver: bridge

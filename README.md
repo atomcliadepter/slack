@@ -557,18 +557,39 @@ npm test
 npm start
 ```
 
-### Docker Deployment
+### Production Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive deployment guide.
+
+#### Docker Deployment (Recommended)
 
 ```bash
-# Build Docker image
-npm run docker:build
+# Using Docker Compose
+cd deployment/docker
+docker-compose up -d
 
-# Run with Docker Compose (includes Redis)
-docker-compose -f docker/docker-compose.yml up -d
-
-# Check health
-curl http://localhost:3000/health
+# Or build and run manually
+docker build -f deployment/docker/Dockerfile -t slack-mcp-server .
+docker run -d --name slack-mcp -p 3000:3000 --env-file .env slack-mcp-server
 ```
+
+#### Kubernetes Deployment
+
+```bash
+# Apply Kubernetes manifests
+kubectl apply -f deployment/k8s/deployment.yaml
+
+# Or use Helm
+helm install slack-mcp deployment/helm/
+```
+
+#### Cloud Platforms
+- **AWS**: ECS, EC2, Lambda support
+- **Google Cloud**: Cloud Run, GKE support  
+- **Azure**: Container Instances, AKS support
+- **Heroku**: One-click deployment ready
+
+See [deployment/](deployment/) directory for platform-specific configurations.
 
 ## ⚡ Performance Optimizations
 
@@ -637,7 +658,7 @@ SLACK_API_MAX_RETRIES=3
 
 # MCP Configuration
 MCP_SERVER_NAME=enhanced-slack-mcp-server
-MCP_SERVER_VERSION=2.0.0
+MCP_SERVER_VERSION=2.0.1
 
 # Optional: Redis for caching
 REDIS_URL=redis://localhost:6379
@@ -1842,6 +1863,52 @@ npm run docker:build
 
 ## 📊 Monitoring and Observability
 
+### Built-in Monitoring
+
+The SDK includes comprehensive monitoring capabilities:
+
+```typescript
+// Health check endpoint
+GET /health
+// Returns: { status: "healthy", uptime: 3600, version: "2.0.1" }
+
+// Metrics endpoint (Prometheus format)
+GET /metrics
+// Returns: Application metrics for monitoring
+```
+
+### Production Monitoring
+
+For production deployments, use the monitoring stack in `deployment/monitoring/`:
+
+```bash
+# Deploy monitoring stack
+cd deployment/monitoring
+docker-compose up -d prometheus grafana alertmanager
+
+# Access dashboards
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000 (admin/admin)
+```
+
+### Key Metrics Monitored
+
+- **Performance**: Response times, throughput, error rates
+- **Resources**: CPU, memory, disk usage
+- **Slack API**: Rate limits, API errors, response times
+- **Business**: Tool usage, success rates, user activity
+
+### Alerting
+
+Pre-configured alerts for:
+- Service downtime
+- High error rates (>10%)
+- High latency (>1s p95)
+- Resource exhaustion
+- Slack API rate limiting
+
+See [deployment/monitoring/alert_rules.yml](deployment/monitoring/alert_rules.yml) for complete alert definitions.
+
 ### Logging
 
 The SDK uses structured JSON logging with configurable levels:
@@ -1912,12 +1979,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### Documentation
 - [Quick Start Guide](QUICKSTART.md) - 5-minute setup
+- [Deployment Guide](DEPLOYMENT.md) - Production deployment
 - [API Reference](API_REFERENCE.md) - Complete tool documentation
-- [API Documentation](docs/api.md) - Detailed usage guide
-- [Tool Reference](docs/tools.md) - Tool-specific documentation
-- [Deployment Guide](docs/deployment.md) - Production deployment
 - [Troubleshooting](docs/troubleshooting.md) - Common issues and solutions
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute
+
+### Deployment Resources
+- [Docker Configurations](deployment/docker/) - Docker and Docker Compose
+- [Kubernetes Manifests](deployment/k8s/) - K8s deployment files
+- [Helm Charts](deployment/helm/) - Helm installation
+- [Monitoring Setup](deployment/monitoring/) - Prometheus and alerting
 
 ### Community
 - [GitHub Issues](https://github.com/your-org/enhanced-mcp-slack-sdk/issues)
