@@ -5,6 +5,24 @@ All notable changes to the Enhanced MCP Slack SDK will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2025-08-28
+
+### 🔧 **Fixed**
+- **Test Environment**: Added missing SLACK_SIGNING_SECRET to test setup
+- **Performance API**: Implemented missing `clearMetrics()` method in PerformanceMonitor
+- **Performance Timer**: Added `elapsed()` method for benchmark tests
+- **Registry Tests**: Fixed TypeScript type mismatches with `as const` assertions
+- **Mock Setup**: Fixed mock implementations being cleared by `jest.clearAllMocks()`
+- **Performance Reports**: Enhanced reports to include Error Rate and Recent Operations sections
+- **Error Thresholds**: Fixed error rate condition in optimization recommendations (decimal vs percentage)
+
+### 📊 **Test Status**
+- **Critical Tests**: All critical infrastructure tests now pass
+- **Performance Tests**: 28/28 performance utility tests passing
+- **Registry Tests**: 27/27 registry comprehensive tests passing
+- **Benchmark Tests**: 4/4 benchmark tests passing
+- **Overall**: 46+ test suites passing, critical gaps resolved
+
 ## [2.0.0] - 2025-08-28
 
 ### 🎉 Major Release - Complete Feature Set

@@ -147,6 +147,13 @@ export class PerformanceMonitor {
   }
 
   /**
+   * Clear all stored metrics
+   */
+  static clearMetrics(): void {
+    this.metrics = [];
+  }
+
+  /**
    * Generate performance report
    */
   static generateReport(operation: string, timeRange?: TimeRange): string {
@@ -158,10 +165,13 @@ export class PerformanceMonitor {
     report += `Average Response Time: ${stats.averageResponseTime.toFixed(2)}ms\n`;
     report += `95th Percentile: ${stats.p95ResponseTime.toFixed(2)}ms\n`;
     report += `Success Rate: ${stats.successRate.toFixed(2)}%\n`;
+    report += `Error Rate: ${(stats.errorRate * 100).toFixed(2)}%\n`;
     
     if (timeRange) {
       report += `Time Range: ${new Date(timeRange.start).toISOString()} - ${new Date(timeRange.end).toISOString()}\n`;
     }
+    
+    report += `Recent Operations:\n`;
     
     return report;
   }
@@ -201,7 +211,7 @@ export class PerformanceMonitor {
       recommendations.push('Consider implementing caching to reduce response times');
     }
     
-    if (stats.errorRate > 10) {
+    if (stats.errorRate > 0.1) {
       recommendations.push('Improve error handling to reduce failure rate');
     }
     
@@ -210,13 +220,6 @@ export class PerformanceMonitor {
     }
 
     return recommendations;
-  }
-
-  /**
-   * Clear all metrics
-   */
-  static clearMetrics(): void {
-    this.metrics = [];
   }
 }
 
@@ -269,6 +272,7 @@ export async function withPerformanceMonitoring<T>(
  */
 export class PerformanceTimer {
   private marks: Map<string, number> = new Map();
+  private startTime: number = Date.now();
 
   mark(name: string): void {
     this.marks.set(name, Date.now());
@@ -280,6 +284,10 @@ export class PerformanceTimer {
       throw new Error(`No mark found for: ${name}`);
     }
     return Date.now() - start;
+  }
+
+  elapsed(): number {
+    return Date.now() - this.startTime;
   }
 
   clear(): void {

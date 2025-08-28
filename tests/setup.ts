@@ -11,4 +11,5 @@ afterAll(() => {
 
 // Mock environment variables
 process.env.SLACK_BOT_TOKEN = 'xoxb-test-token';
+process.env.SLACK_SIGNING_SECRET = 'test-signing-secret';
 process.env.NODE_ENV = 'test';

@@ -104,12 +104,12 @@
 1. **Use Correct User ID Format**
    ```javascript
    // ✅ Correct format
-   await slackGetUserInfoTool.execute({
+   await slackUsersInfoTool.execute({
      userId: "U1234567890"  // Slack user ID format
    });
    
    // ❌ Incorrect formats
-   await slackGetUserInfoTool.execute({
+   await slackUsersInfoTool.execute({
      userId: "@john.doe",    // Username format not supported
      userId: "john.doe",     // Plain username not supported
    });
@@ -158,7 +158,7 @@
    });
    
    // slack_get_user_info requires:
-   await slackGetUserInfoTool.execute({
+   await slackUsersInfoTool.execute({
      userId: "U1234567890"  // Required
    });
    
@@ -409,7 +409,7 @@ const workspaceTest = await slackGetWorkspaceInfoTool.execute({});
 console.log('Workspace test:', workspaceTest.success ? 'PASS' : 'FAIL');
 
 // Test user lookup
-const userTest = await slackGetUserInfoTool.execute({ userId: 'USLACKBOT' });
+const userTest = await slackUsersInfoTool.execute({ userId: 'USLACKBOT' });
 console.log('User test:', userTest.success ? 'PASS' : 'FAIL');
 
 // Test message sending

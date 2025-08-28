@@ -42,6 +42,10 @@ describe('Tool Registry - Comprehensive Tests', () => {
     jest.clearAllMocks();
     // Clear the registry before each test
     toolRegistry.clear();
+    
+    // Re-setup mocks after clearing
+    (mockTool1.execute as jest.Mock).mockResolvedValue({ success: true, data: 'test1' });
+    (mockTool2.execute as jest.Mock).mockResolvedValue({ success: true, data: 'test2' });
   });
 
   describe('Tool Registration', () => {
@@ -235,7 +239,7 @@ describe('Tool Registry - Comprehensive Tests', () => {
         name: `concurrent_tool_${i}`,
         description: `Concurrent tool ${i}`,
         inputSchema: {
-          type: 'object',
+          type: 'object' as const,
           properties: {},
         },
         execute: jest.fn(),
