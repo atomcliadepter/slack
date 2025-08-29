@@ -96,116 +96,47 @@ class ToolRegistry {
 // Create and export the singleton instance
 export const toolRegistry = new ToolRegistry();
 
-// Import and register all tools
-import { slackSendMessageTool } from '@/tools/slackSendMessage';
-import { slackGetChannelHistoryTool } from '@/tools/slackGetChannelHistory';
-import { slackCreateChannelTool } from '@/tools/slackCreateChannel';
-// Removed duplicate slackGetUserInfo - using enhanced slackUsersInfo instead
-import { slackListChannelsTool } from '@/tools/slackListChannels';
-import { slackListUsersTool } from '@/tools/slackListUsers';
-import { slackAuthTestTool } from '@/tools/slackAuthTest';
+// Dynamically discover and register tools from the tools directory
+import fs from 'fs';
+import path from 'path';
 
-// Previously implemented tools
-import { slackUploadFileTool } from '@/tools/slackUploadFile';
-import { slackReactionsAddTool } from '@/tools/slackReactionsAdd';
-import { slackPinsAddTool } from '@/tools/slackPinsAdd';
+const toolsPath = path.resolve(__dirname, '../tools');
 
-// New priority tools
-import { slackConversationsInfoTool } from '@/tools/slackConversationsInfo';
-import { slackChatUpdateTool } from '@/tools/slackChatUpdate';
-import { slackChatDeleteTool } from '@/tools/slackChatDelete';
+try {
+  const toolFiles = fs.readdirSync(toolsPath);
 
-// Latest priority tools (Session 4)
-import { slackReactionsRemoveTool } from '@/tools/slackReactionsRemove';
-import { slackPinsRemoveTool } from '@/tools/slackPinsRemove';
-import { slackSearchMessagesTool } from '@/tools/slackSearchMessages';
+  toolFiles.forEach(file => {
+    if (!file.endsWith('.ts') && !file.endsWith('.js')) {
+      return;
+    }
 
-// Session 5 tools (reactions_get, pins_list, bookmarks_list)
-import { slackReactionsGetTool } from '@/tools/slackReactionsGet';
-import { slackPinsListTool } from '@/tools/slackPinsList';
-import { slackBookmarksListTool } from '@/tools/slackBookmarksList';
-import { slackJoinChannelTool } from '@/tools/slackJoinChannel';
-import { slackLeaveChannelTool } from '@/tools/slackLeaveChannel';
-import { slackArchiveChannelTool } from '@/tools/slackArchiveChannel';
-import { slackSetStatusTool } from '@/tools/slackSetStatus';
-import { slackWorkspaceInfoTool } from '@/tools/slackWorkspaceInfo';
-import { slackViewsPublishTool } from '@/tools/slackViewsPublish';
-import { slackEventsTailTool } from '@/tools/slackEventsTail';
-import { slackConversationsMembersTool } from '@/tools/slackConversationsMembers';
-import { slackConversationsHistoryTool } from '@/tools/slackConversationsHistory';
-import { slackConversationsRepliesTool } from '@/tools/slackConversationsReplies';
-import { slackConversationsMarkTool } from '@/tools/slackConversationsMark';
-import { slackUsersLookupByEmailTool } from '@/tools/slackUsersLookupByEmail';
-import { slackUsersInfoTool } from '@/tools/slackUsersInfo';
-import { slackConversationsOpenTool } from '@/tools/slackConversationsOpen';
-import { slackUsersListTool } from '@/tools/slackUsersList';
+    const fullPath = path.join(toolsPath, file);
 
-// New additional tools
-import { slackConversationsUnarchiveTool } from '@/tools/slackConversationsUnarchive';
-import { slackConversationsInviteTool } from '@/tools/slackConversationsInvite';
-import { slackConversationsKickTool } from '@/tools/slackConversationsKick';
-import { slackRemindersAddTool } from '@/tools/slackRemindersAdd';
-import { slackRemindersListTool } from '@/tools/slackRemindersList';
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require(fullPath);
 
-// Latest additional tools (Session 2)
-import { slackRemindersDeleteTool } from '@/tools/slackRemindersDelete';
-import { slackFilesListTool } from '@/tools/slackFilesList';
-import { slackFilesDeleteTool } from '@/tools/slackFilesDelete';
-import { slackTeamInfoTool } from '@/tools/slackTeamInfo';
-import { slackDndInfoTool } from '@/tools/slackDndInfo';
-import { slackDndSetTool } from '@/tools/slackDndSet';
-import { slackEmojiListTool } from '@/tools/slackEmojiList';
+      let tool: MCPTool | undefined = mod.default;
 
-// Register all implemented tools
-toolRegistry.register(slackSendMessageTool);
-toolRegistry.register(slackGetChannelHistoryTool);
-toolRegistry.register(slackCreateChannelTool);
-// Removed duplicate registration - using enhanced slackUsersInfo instead
-toolRegistry.register(slackListChannelsTool);
-toolRegistry.register(slackListUsersTool);
-toolRegistry.register(slackAuthTestTool);
-toolRegistry.register(slackUploadFileTool);
-toolRegistry.register(slackReactionsAddTool);
-toolRegistry.register(slackPinsAddTool);
-toolRegistry.register(slackConversationsInfoTool);
-toolRegistry.register(slackChatUpdateTool);
-toolRegistry.register(slackChatDeleteTool);
-toolRegistry.register(slackReactionsRemoveTool);
-toolRegistry.register(slackPinsRemoveTool);
-toolRegistry.register(slackSearchMessagesTool);
-toolRegistry.register(slackReactionsGetTool);
-toolRegistry.register(slackPinsListTool);
-toolRegistry.register(slackBookmarksListTool);
-toolRegistry.register(slackJoinChannelTool);
-toolRegistry.register(slackLeaveChannelTool);
-toolRegistry.register(slackArchiveChannelTool);
-toolRegistry.register(slackSetStatusTool);
-toolRegistry.register(slackWorkspaceInfoTool);
-toolRegistry.register(slackViewsPublishTool);
-toolRegistry.register(slackEventsTailTool);
-toolRegistry.register(slackConversationsMembersTool);
-toolRegistry.register(slackConversationsHistoryTool);
-toolRegistry.register(slackConversationsRepliesTool);
-toolRegistry.register(slackConversationsMarkTool);
-toolRegistry.register(slackUsersLookupByEmailTool);
-toolRegistry.register(slackUsersInfoTool);
-toolRegistry.register(slackUsersListTool);
-toolRegistry.register(slackConversationsOpenTool);
+      if (!tool) {
+        tool = Object.values(mod).find(
+          (exp: any) =>
+            exp && typeof exp === 'object' && 'name' in exp && 'execute' in exp
+        ) as MCPTool | undefined;
+      }
 
-// Register new additional tools
-toolRegistry.register(slackConversationsUnarchiveTool);
-toolRegistry.register(slackConversationsInviteTool);
-toolRegistry.register(slackConversationsKickTool);
-toolRegistry.register(slackRemindersAddTool);
-toolRegistry.register(slackRemindersListTool);
-
-// Register latest additional tools (Session 2)
-toolRegistry.register(slackRemindersDeleteTool);
-toolRegistry.register(slackFilesListTool);
-toolRegistry.register(slackFilesDeleteTool);
-toolRegistry.register(slackTeamInfoTool);
-toolRegistry.register(slackDndInfoTool);
-toolRegistry.register(slackDndSetTool);
-toolRegistry.register(slackEmojiListTool);
+      if (tool) {
+        toolRegistry.register(tool);
+        logger.info(`Loaded tool '${tool.name}' from ${file}`);
+      } else {
+        logger.warn(`No MCPTool export found in ${file}`);
+      }
+    } catch (err) {
+      logger.error(`Failed to load tool from ${file}: ${(err as Error).message}`);
+    }
+  });
+} catch (err) {
+  logger.error(`Failed to read tools directory '${toolsPath}': ${(err as Error).message}`);
+}
 
 logger.info(`🎉 SUPER ENHANCED! Registered ${toolRegistry.getAllTools().length} tools in registry - NOW WITH ${toolRegistry.getAllTools().length} TOTAL TOOLS!`);
