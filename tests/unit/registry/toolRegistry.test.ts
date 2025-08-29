@@ -2,6 +2,8 @@
 /**
  * Tests for Tool Registry
  */
+import fs from 'fs';
+import path from 'path';
 import { toolRegistry, MCPTool } from '../../../src/registry/toolRegistry';
 
 describe('Tool Registry', () => {
@@ -118,6 +120,55 @@ describe('Tool Registry', () => {
       expectedTools.forEach(toolName => {
         expect(freshRegistry.hasTool(toolName)).toBe(true);
       });
+    });
+  });
+
+  describe('Dynamic Loading', () => {
+    const toolsDir = path.resolve(__dirname, '../../../src/tools');
+    const tempToolPath1 = path.join(toolsDir, 'tempTool1.ts');
+    const tempToolPath2 = path.join(toolsDir, 'tempTool2.ts');
+
+    const toolSource = `\
+import { MCPTool } from '../registry/toolRegistry';\
+const tempTool: MCPTool = {\
+  name: 'temp_tool',\
+  description: 'temp',\
+  inputSchema: { type: 'object', properties: {} },\
+  async execute() { return {}; }\
+};\
+export default tempTool;\
+`;
+
+    beforeAll(() => {
+      fs.writeFileSync(tempToolPath1, toolSource);
+      fs.writeFileSync(tempToolPath2, toolSource);
+    });
+
+    afterAll(() => {
+      if (fs.existsSync(tempToolPath1)) fs.unlinkSync(tempToolPath1);
+      if (fs.existsSync(tempToolPath2)) fs.unlinkSync(tempToolPath2);
+      jest.resetModules();
+    });
+
+    test('automatically registers tools and warns on duplicates', () => {
+      jest.resetModules();
+      jest.doMock('../../../src/utils/logger', () => ({
+        logger: {
+          info: jest.fn(),
+          warn: jest.fn(),
+          error: jest.fn(),
+          debug: jest.fn(),
+        },
+      }));
+
+      const { toolRegistry: freshRegistry } = require('../../../src/registry/toolRegistry');
+      const { logger } = require('../../../src/utils/logger');
+      const mockLogger = logger as jest.Mocked<typeof logger>;
+
+      expect(freshRegistry.hasTool('temp_tool')).toBe(true);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('already registered')
+      );
     });
   });
 });
