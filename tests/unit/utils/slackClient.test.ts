@@ -1,4 +1,4 @@
-import { slackClient } from '../../../src/utils/slackClient';
+import { EnhancedSlackClient, slackClient } from '../../../src/utils/slackClient';
 
 // Mock WebClient
 jest.mock('@slack/web-api', () => ({
@@ -30,6 +30,10 @@ describe('slackClient', () => {
     });
   });
 
+  afterAll(() => {
+    slackClient.stopCleanup();
+  });
+
   it('should initialize client', () => {
     const client = slackClient.getClient();
     expect(client).toBeDefined();
@@ -38,5 +42,20 @@ describe('slackClient', () => {
   it('should resolve channel ID', async () => {
     const result = await slackClient.resolveChannelId('general');
     expect(result).toBe('C1234567890');
+  });
+
+  it('removes expired cache entries in background', () => {
+    jest.useFakeTimers();
+    const client = new EnhancedSlackClient({ cacheTtl: 1000 });
+    // Directly set cache entry
+    (client as any).cache.set('temp', { data: 'value', timestamp: Date.now() });
+
+    // Advance time beyond TTL to trigger cleanup
+    jest.advanceTimersByTime(1100);
+
+    expect((client as any).cache.has('temp')).toBe(false);
+
+    client.stopCleanup();
+    jest.useRealTimers();
   });
 });

@@ -7,15 +7,17 @@ import { ErrorHandler } from '@/utils/error';
 /**
  * Enhanced Slack Web API Client with retry logic and error handling
  */
-class EnhancedSlackClient {
+export class EnhancedSlackClient {
   private client: WebClient;
   private userClient: WebClient | null = null;
   private config: ReturnType<typeof getSlackConfig>;
   private cache: Map<string, { data: any; timestamp: number }> = new Map();
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly CACHE_TTL: number; // Cache TTL in ms
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
-  constructor() {
+  constructor(options?: { cacheTtl?: number }) {
     this.config = getSlackConfig();
+    this.CACHE_TTL = options?.cacheTtl ?? 5 * 60 * 1000; // default 5 minutes
     this.client = new WebClient(this.config.token, {
       logLevel: this.config.logLevel as any,
       timeout: this.config.timeout,
@@ -34,6 +36,9 @@ class EnhancedSlackClient {
         },
       });
     }
+
+    // Start background cache cleanup
+    this.cleanupInterval = setInterval(() => this.cleanupCache(), this.CACHE_TTL);
 
     logger.info('Slack client initialized', {
       logLevel: this.config.logLevel,
@@ -85,6 +90,28 @@ class EnhancedSlackClient {
    */
   clearCache(): void {
     this.cache.clear();
+  }
+
+  /**
+   * Cleanup expired cache entries
+   */
+  private cleanupCache(): void {
+    const now = Date.now();
+    for (const [key, value] of this.cache.entries()) {
+      if (now - value.timestamp >= this.CACHE_TTL) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Stop the background cleanup interval
+   */
+  stopCleanup(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
   }
 
   /**
