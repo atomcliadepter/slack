@@ -1,5 +1,6 @@
 import { MCPTool } from '../registry/toolRegistry';
 import { slackClient } from '../utils/slackClient';
+import { ErrorRecovery, RetryOptions } from '../utils/errorRecovery';
 import { ErrorHandler } from '../utils/error';
 import { logger } from '../utils/logger';
 import { z } from 'zod';
@@ -39,12 +40,17 @@ export const slackAuthTestTool: MCPTool = {
 
   async execute(args: Record<string, any>) {
     const startTime = Date.now();
-    
+
     try {
       const validatedArgs = inputSchema.parse(args) as SlackAuthTestArgs;
-      
+
       // Perform basic auth test
-      const authResult = await slackClient.getClient().auth.test();
+      const retryOptions: RetryOptions = { maxAttempts: 3, baseDelay: 500, maxDelay: 2000, retryableErrors: ['rate_limited'] };
+      const authResult = await ErrorRecovery.executeWithRetry(
+        () => slackClient.getClient().auth.test(),
+        retryOptions,
+        'slack-api'
+      );
       
       if (!authResult.ok) {
         throw new Error(`Authentication failed: ${authResult.error}`);
