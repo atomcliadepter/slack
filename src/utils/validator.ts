@@ -1,6 +1,6 @@
 
-
 import { z } from 'zod';
+import { ValidationError } from './error';
 
 /**
  * Zod schemas for tool validation
@@ -489,5 +489,175 @@ export class Validator {
       isValid: errors.length === 0,
       errors
     };
+  }
+
+  /**
+   * Assert valid Slack user ID or throw ValidationError
+   */
+  static assertUserId(userId: unknown, fieldName: string = 'user'): void {
+    const schema = z
+      .string({
+        required_error: 'User ID is required',
+        invalid_type_error: 'User ID must be a string'
+      })
+      .min(1, 'User ID is required')
+      .regex(
+        /^U[A-Z0-9]{8,}$/,
+        'Invalid user ID format. Must start with "U" followed by alphanumeric characters'
+      );
+
+    try {
+      schema.parse(userId);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ValidationError(fieldName, error.errors[0].message, userId);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Assert valid Slack channel ID or throw ValidationError
+   */
+  static assertChannelId(channelId: unknown, fieldName: string = 'channel'): void {
+    const schema = z
+      .string({
+        required_error: 'Channel ID is required',
+        invalid_type_error: 'Channel ID must be a string'
+      })
+      .min(1, 'Channel ID is required')
+      .regex(
+        /^[CGD][A-Z0-9]{8,}$/,
+        'Invalid channel ID format. Must start with "C", "G", or "D" followed by alphanumeric characters'
+      );
+
+    try {
+      schema.parse(channelId);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ValidationError(fieldName, error.errors[0].message, channelId);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Assert valid Slack timestamp or throw ValidationError
+   */
+  static assertTimestamp(timestamp: unknown, fieldName: string = 'timestamp'): void {
+    const schema = z
+      .string({
+        required_error: 'Timestamp is required',
+        invalid_type_error: 'Timestamp must be a string'
+      })
+      .min(1, 'Timestamp is required')
+      .regex(/^\d{10}\.\d{6}$/, 'Invalid timestamp format. Must be in format "1234567890.123456"');
+
+    try {
+      schema.parse(timestamp);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ValidationError(fieldName, error.errors[0].message, timestamp);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Assert valid email or throw ValidationError
+   */
+  static assertEmail(email: unknown, fieldName: string = 'email'): void {
+    const schema = z
+      .string({
+        required_error: 'Email is required',
+        invalid_type_error: 'Email must be a string'
+      })
+      .min(1, 'Email is required')
+      .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email format');
+
+    try {
+      schema.parse(email);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ValidationError(fieldName, error.errors[0].message, email);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Assert valid Slack channel name or throw ValidationError
+   */
+  static assertChannelName(channelName: unknown, fieldName: string = 'channel'): void {
+    const schema = z
+      .string({
+        required_error: 'Channel name is required',
+        invalid_type_error: 'Channel name must be a string'
+      })
+      .min(1, 'Channel name is required')
+      .transform(name => (name.startsWith('#') ? name.slice(1) : name))
+      .refine(
+        name => /^[a-z0-9\-_]{1,21}$/.test(name),
+        'Invalid channel name. Must be lowercase, 1-21 characters, and contain only letters, numbers, hyphens, and underscores'
+      );
+
+    try {
+      schema.parse(channelName);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ValidationError(fieldName, error.errors[0].message, channelName);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Assert array of Slack user IDs or throw ValidationError
+   */
+  static assertUserIds(userIds: unknown, fieldName: string = 'users'): void {
+    if (!Array.isArray(userIds)) {
+      throw new ValidationError(fieldName, 'Must be an array of user IDs', userIds);
+    }
+
+    if (userIds.length === 0) {
+      throw new ValidationError(fieldName, 'At least one user ID is required', userIds);
+    }
+
+    userIds.forEach((id, index) => {
+      try {
+        this.assertUserId(id, `${fieldName}[${index}]`);
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          throw new ValidationError(fieldName, `Invalid user ID at index ${index}: ${error.message}`, userIds);
+        }
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Sanitize and assert text input
+   */
+  static assertText(text: unknown, maxLength: number = 4000, fieldName: string = 'text'): string {
+    const schema = z
+      .string({
+        required_error: 'Text is required',
+        invalid_type_error: 'Text must be a string'
+      })
+      .transform(str => str.trim())
+      .refine(str => str.length > 0, 'Text cannot be empty')
+      .refine(
+        str => str.length <= maxLength,
+        `Text is too long. Maximum ${maxLength} characters allowed`
+      );
+
+    try {
+      return schema.parse(text);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        throw new ValidationError(fieldName, error.errors[0].message, text);
+      }
+      throw error;
+    }
   }
 }

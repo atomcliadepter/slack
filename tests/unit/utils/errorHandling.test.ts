@@ -1,5 +1,5 @@
 import { SlackAPIErrorHandler } from '../../../src/utils/slackErrors';
-import { InputValidator } from '../../../src/utils/validation';
+import { Validator } from '../../../src/utils/validator';
 import { CircuitBreaker, CircuitState } from '../../../src/utils/circuitBreaker';
 import { ErrorRecovery } from '../../../src/utils/errorRecovery';
 
@@ -40,34 +40,34 @@ describe('Enhanced Error Handling', () => {
     });
   });
 
-  describe('InputValidator', () => {
+  describe('Validator assertions', () => {
     it('should validate user IDs correctly', () => {
-      expect(() => InputValidator.validateUserId('U1234567890')).not.toThrow();
-      expect(() => InputValidator.validateUserId('invalid')).toThrow('Invalid user ID format');
-      expect(() => InputValidator.validateUserId('')).toThrow('User ID is required');
+      expect(() => Validator.assertUserId('U1234567890')).not.toThrow();
+      expect(() => Validator.assertUserId('invalid')).toThrow('Invalid user ID format');
+      expect(() => Validator.assertUserId('')).toThrow('User ID is required');
     });
 
     it('should validate channel IDs correctly', () => {
-      expect(() => InputValidator.validateChannelId('C1234567890')).not.toThrow();
-      expect(() => InputValidator.validateChannelId('G1234567890')).not.toThrow();
-      expect(() => InputValidator.validateChannelId('D1234567890')).not.toThrow();
-      expect(() => InputValidator.validateChannelId('invalid')).toThrow('Invalid channel ID format');
+      expect(() => Validator.assertChannelId('C1234567890')).not.toThrow();
+      expect(() => Validator.assertChannelId('G1234567890')).not.toThrow();
+      expect(() => Validator.assertChannelId('D1234567890')).not.toThrow();
+      expect(() => Validator.assertChannelId('invalid')).toThrow('Invalid channel ID format');
     });
 
     it('should validate timestamps correctly', () => {
-      expect(() => InputValidator.validateTimestamp('1234567890.123456')).not.toThrow();
-      expect(() => InputValidator.validateTimestamp('invalid')).toThrow('Invalid timestamp format');
+      expect(() => Validator.assertTimestamp('1234567890.123456')).not.toThrow();
+      expect(() => Validator.assertTimestamp('invalid')).toThrow('Invalid timestamp format');
     });
 
     it('should validate emails correctly', () => {
-      expect(() => InputValidator.validateEmail('test@example.com')).not.toThrow();
-      expect(() => InputValidator.validateEmail('invalid-email')).toThrow('Invalid email format');
+      expect(() => Validator.assertEmail('test@example.com')).not.toThrow();
+      expect(() => Validator.assertEmail('invalid-email')).toThrow('Invalid email format');
     });
 
     it('should validate and sanitize text', () => {
-      expect(InputValidator.validateText('  hello world  ')).toBe('hello world');
-      expect(() => InputValidator.validateText('')).toThrow('Text cannot be empty');
-      expect(() => InputValidator.validateText('a'.repeat(5000))).toThrow('Text is too long');
+      expect(Validator.assertText('  hello world  ')).toBe('hello world');
+      expect(() => Validator.assertText('')).toThrow('Text cannot be empty');
+      expect(() => Validator.assertText('a'.repeat(5000))).toThrow('Text is too long');
     });
   });
 
