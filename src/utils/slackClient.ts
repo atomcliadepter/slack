@@ -251,7 +251,7 @@ class EnhancedSlackClient {
     }
 
     const userInfo = await this.getUserInfo(user);
-    if (!userInfo.success || !userInfo.user) {
+    if (!userInfo.ok || !userInfo.user) {
       throw new Error(`Could not resolve user: ${user}`);
     }
 

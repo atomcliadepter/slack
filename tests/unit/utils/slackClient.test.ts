@@ -39,4 +39,14 @@ describe('slackClient', () => {
     const result = await slackClient.resolveChannelId('general');
     expect(result).toBe('C1234567890');
   });
+
+  it('should resolve user ID', async () => {
+    jest.spyOn(slackClient, 'getUserInfo').mockResolvedValue({
+      ok: true,
+      user: { id: 'U1234567890' }
+    } as any);
+
+    const result = await slackClient.resolveUserId('testuser');
+    expect(result).toBe('U1234567890');
+  });
 });
