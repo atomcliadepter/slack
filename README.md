@@ -1807,16 +1807,16 @@ spec:
 
 ```typescript
 import { SlackAPIErrorHandler } from '@/utils/slackErrors';
-import { InputValidator } from '@/utils/validation';
+import { Validator } from '@/utils/validator';
 import { ErrorRecovery } from '@/utils/errorRecovery';
 
 // Handle Slack API errors with user-friendly messages
 const errorResponse = SlackAPIErrorHandler.createErrorResponse(slackResult);
 
 // Validate inputs before API calls
-InputValidator.validateUserId('U1234567890');
-InputValidator.validateChannelId('C1234567890');
-InputValidator.validateEmail('user@example.com');
+Validator.assertUserId('U1234567890');
+Validator.assertChannelId('C1234567890');
+Validator.assertEmail('user@example.com');
 
 // Execute with retry and circuit breaker
 const result = await ErrorRecovery.executeWithRetry(
