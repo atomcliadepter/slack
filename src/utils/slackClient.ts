@@ -151,10 +151,24 @@ class EnhancedSlackClient {
       if (cachedUserId) {
         userId = cachedUserId;
       } else {
-        const users = await this.client.users.list({});
-        const foundUser = users.members?.find(
-          (u) => u.name === username || u.real_name === username
-        );
+        const MAX_PAGES = 50;
+        let cursor: string | undefined = undefined;
+        let page = 0;
+        let foundUser;
+
+        do {
+          const users = await this.client.users.list({ cursor });
+          foundUser = users.members?.find(
+            (u) => u.name === username || u.real_name === username
+          );
+
+          if (foundUser) {
+            break;
+          }
+
+          cursor = users.response_metadata?.next_cursor || undefined;
+          page += 1;
+        } while (cursor && page < MAX_PAGES);
 
         if (!foundUser) {
           throw new Error(`User '${user}' not found`);
@@ -251,7 +265,7 @@ class EnhancedSlackClient {
     }
 
     const userInfo = await this.getUserInfo(user);
-    if (!userInfo.success || !userInfo.user) {
+    if (!userInfo.ok || !userInfo.user) {
       throw new Error(`Could not resolve user: ${user}`);
     }
 
