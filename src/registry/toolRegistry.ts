@@ -147,6 +147,15 @@ import { slackConversationsKickTool } from '@/tools/slackConversationsKick';
 import { slackRemindersAddTool } from '@/tools/slackRemindersAdd';
 import { slackRemindersListTool } from '@/tools/slackRemindersList';
 
+// Latest additional tools (Session 2)
+import { slackRemindersDeleteTool } from '@/tools/slackRemindersDelete';
+import { slackFilesListTool } from '@/tools/slackFilesList';
+import { slackFilesDeleteTool } from '@/tools/slackFilesDelete';
+import { slackTeamInfoTool } from '@/tools/slackTeamInfo';
+import { slackDndInfoTool } from '@/tools/slackDndInfo';
+import { slackDndSetTool } from '@/tools/slackDndSet';
+import { slackEmojiListTool } from '@/tools/slackEmojiList';
+
 // Register all implemented tools
 toolRegistry.register(slackSendMessageTool);
 toolRegistry.register(slackGetChannelHistoryTool);
@@ -190,4 +199,13 @@ toolRegistry.register(slackConversationsKickTool);
 toolRegistry.register(slackRemindersAddTool);
 toolRegistry.register(slackRemindersListTool);
 
-logger.info(`🎉 ENHANCED! Registered ${toolRegistry.getAllTools().length} tools in registry - NOW WITH ${toolRegistry.getAllTools().length} TOTAL TOOLS!`);
+// Register latest additional tools (Session 2)
+toolRegistry.register(slackRemindersDeleteTool);
+toolRegistry.register(slackFilesListTool);
+toolRegistry.register(slackFilesDeleteTool);
+toolRegistry.register(slackTeamInfoTool);
+toolRegistry.register(slackDndInfoTool);
+toolRegistry.register(slackDndSetTool);
+toolRegistry.register(slackEmojiListTool);
+
+logger.info(`🎉 SUPER ENHANCED! Registered ${toolRegistry.getAllTools().length} tools in registry - NOW WITH ${toolRegistry.getAllTools().length} TOTAL TOOLS!`);
