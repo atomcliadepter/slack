@@ -140,6 +140,13 @@ import { slackUsersInfoTool } from '@/tools/slackUsersInfo';
 import { slackConversationsOpenTool } from '@/tools/slackConversationsOpen';
 import { slackUsersListTool } from '@/tools/slackUsersList';
 
+// New additional tools
+import { slackConversationsUnarchiveTool } from '@/tools/slackConversationsUnarchive';
+import { slackConversationsInviteTool } from '@/tools/slackConversationsInvite';
+import { slackConversationsKickTool } from '@/tools/slackConversationsKick';
+import { slackRemindersAddTool } from '@/tools/slackRemindersAdd';
+import { slackRemindersListTool } from '@/tools/slackRemindersList';
+
 // Register all implemented tools
 toolRegistry.register(slackSendMessageTool);
 toolRegistry.register(slackGetChannelHistoryTool);
@@ -176,4 +183,11 @@ toolRegistry.register(slackUsersInfoTool);
 toolRegistry.register(slackUsersListTool);
 toolRegistry.register(slackConversationsOpenTool);
 
-logger.info(`🎉 COMPLETE! Registered ${toolRegistry.getAllTools().length} tools in registry - ALL TOOLS IMPLEMENTED!`);
+// Register new additional tools
+toolRegistry.register(slackConversationsUnarchiveTool);
+toolRegistry.register(slackConversationsInviteTool);
+toolRegistry.register(slackConversationsKickTool);
+toolRegistry.register(slackRemindersAddTool);
+toolRegistry.register(slackRemindersListTool);
+
+logger.info(`🎉 ENHANCED! Registered ${toolRegistry.getAllTools().length} tools in registry - NOW WITH ${toolRegistry.getAllTools().length} TOTAL TOOLS!`);
